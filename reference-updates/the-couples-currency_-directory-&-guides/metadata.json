@@ -1,0 +1,7 @@
+{
+  "name": "The Couples Currency: Directory & Guides",
+  "description": "An interactive directory of relationship and intimacy terms, alongside a guide to the chemistry of connection for couples. Explore, filter, and learn about different aspects of intimacy, from sweet gestures to advanced concepts.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
