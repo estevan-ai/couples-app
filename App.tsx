@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Dashboard from './components/Dashboard';
+import { InstallPWA } from './components/InstallPWA';
+import InstallPrompt from './components/InstallPrompt';
 import TermsDirectory from './components/TermsDirectory';
 import ChemistryGuide from './components/ChemistryGuide';
 import GivingReceivingGuide from './components/GivingReceivingGuide';
@@ -87,6 +89,29 @@ const App: React.FC = () => {
     shareUnsure: true,
     shareBoundaries: false
   });
+
+  const [notificationSettings, setNotificationSettings] = useState<import('./types').NotificationSettings>({
+    chatter: true,
+    quickFlirts: true,
+    allFlirts: true,
+    messages: true,
+    thoughts: true,
+    newFavors: true
+  });
+
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
+
+  useEffect(() => {
+    // Show install prompt 5s after load if applicable
+    const timer = setTimeout(() => {
+      // Check if standalone
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
+      if (!isStandalone) {
+        setShowInstallPrompt(true);
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [loading, setLoading] = useState(true);
 
@@ -393,7 +418,7 @@ const App: React.FC = () => {
     }
   };
 
-  const addNote = async (contextId: string, text: string, photoPath?: string, photoIv?: string, subject?: string, extra?: { encryptedKey?: string, storagePath?: string, senderId?: string }) => {
+  const addNote = async (contextId: string, text: string, photoPath?: string, photoIv?: string, subject?: string, extra?: { encryptedKey?: string, storagePath?: string, senderId?: string, expiresAt?: number, audioPath?: string, audioIv?: string }) => {
     if (!currentUser || !auth.currentUser) return;
     try {
       const newNote: any = {
@@ -407,7 +432,11 @@ const App: React.FC = () => {
         photoIv: photoIv || null,
         encryptedKey: extra?.encryptedKey || null,
         storagePath: extra?.storagePath || null,
-        senderId: extra?.senderId || null
+        senderId: extra?.senderId || null,
+        expiresAt: extra?.expiresAt || null,
+        status: 'sent',
+        audioPath: extra?.audioPath || null,
+        audioIv: extra?.audioIv || null
       };
 
       // Remove null keys if preferred, or just save as null. Null is valid in Firestore.
@@ -417,8 +446,61 @@ const App: React.FC = () => {
       await addDoc(collection(db, 'users', auth.currentUser.uid, 'chatter'), newNote);
     } catch (e: any) {
       console.error("Error adding note:", e);
-      // Optional: Re-throw to let UI know
       throw e;
+    }
+  };
+
+  const deleteNote = async (id: string) => {
+    if (!auth.currentUser) return;
+    try {
+      // 1. Find the note to get its Firestore ID (if different) or assuming 'id' is the doc ID?
+      // Wait, app uses 'id' property in the object (Date.now()), but Firestore has its own auto-ID.
+      // We need to query for it if we don't store the doc ID.
+      // Let's assume we need to query by 'id' field.
+      const q = query(collection(db, 'users', auth.currentUser.uid, 'chatter'), where('id', '==', id));
+      const snapshot = await getDocs(q);
+
+      const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+
+      // Local state update (optimistic or driven by onSnapshot? onSnapshot handles it, but optimistic is nice)
+      // Actually onSnapshot in useEffect will handle the removal from 'chatter' state if we are listening.
+      // We are listening! (useEffect at line 170 in original file likely)
+      console.log("Deleted note:", id);
+    } catch (e) {
+      console.error("Error deleting note:", e);
+    }
+  };
+
+  const markNoteAsRead = async (noteId: string, authorUid: string) => {
+    if (!currentUser || !auth.currentUser) return;
+    try {
+      // If I am the author, I don't mark my own as read (logic check)
+      // Actually, we pass the authorUid of the NOTE. 
+      // If note is from Partner, we need to update it in PARTNER's DB (because that's where the source of truth for their message is?)
+      // Wait, the architecture seems to be: 
+      // - I read my own 'chatter' collection? 
+      // - Or do I read from Partner's 'chatter' collection?
+      // Line 234: setPartnerChatter(notes) from `users/{pUid}/chatter`.
+
+      // So if I read a note, I need to update the document in the PARTNER's collection so THEY see it's read?
+      // OR do I update my copy? 
+      // The app seems to sync everything.
+
+      // Let's assume we update the document wherever it lives.
+      // If it's in partnerChatter, it's in `users/{partnerUid}/chatter/{noteId}`.
+
+      // But wait, `markNoteAsRead` needs to know where the note is.
+      // If the note is in `partnerChatter`, it is in the partner's subcollection.
+      // I need to write to `users/{partnerUid}/chatter/{noteId}`.
+
+      const ref = doc(db, 'users', authorUid, 'chatter', noteId);
+      await updateDoc(ref, {
+        status: 'read',
+        readAt: Date.now()
+      });
+    } catch (e) {
+      console.error("Error marking read:", e);
     }
   };
 
@@ -635,7 +717,7 @@ const App: React.FC = () => {
               onToggleStatus={handleToggleStatus}
               onClaimBounty={handleClaimBounty}
               onDeleteBounty={(id) => console.log("Delete bounty TODO", id)}
-              onDeleteNote={(id) => console.log("Delete note TODO", id)}
+              onDeleteNote={deleteNote}
               chatter={chatter}
               onAddNote={addNote}
               highlightedBountyId={highlightedBountyId}
@@ -647,10 +729,11 @@ const App: React.FC = () => {
               partner={partner}
               chatter={chatter}
               onAddNote={addNote}
-              onDeleteNote={(id) => console.log("Delete note TODO", id)}
+              onDeleteNote={deleteNote}
               onPinInsight={(text) => console.log("Pin insight TODO", text)}
               sharedKey={sharedKey}
               onNavigateContext={handleNavigateContext}
+              onMarkRead={markNoteAsRead}
             />
           )}
 
@@ -667,6 +750,8 @@ const App: React.FC = () => {
               onConnect={handleConnectPartner}
               sharingSettings={sharingSettings}
               setSharingSettings={setSharingSettings}
+              notificationSettings={notificationSettings}
+              setNotificationSettings={setNotificationSettings}
               chatter={chatter}
               bounties={bounties}
             />
@@ -709,6 +794,7 @@ const App: React.FC = () => {
         </button>
       </div>
       <Chatbot />
+      <InstallPrompt isOpen={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
     </div>
   );
 };

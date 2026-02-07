@@ -18,10 +18,12 @@ interface AccountProps {
     bounties: Bounty[];
     onRedoQuiz?: () => void;
     defaultInbox?: boolean;
+    notificationSettings?: import('../types').NotificationSettings;
+    setNotificationSettings?: React.Dispatch<React.SetStateAction<import('../types').NotificationSettings>>;
 }
 
 const Account: React.FC<AccountProps> = ({
-    currentUser, partner, onReset, onConnect, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties
+    currentUser, partner, onReset, onConnect, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties, notificationSettings, setNotificationSettings
 }) => {
     const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'privacy'>('profile');
     const [partnerIdInput, setPartnerIdInput] = useState('');
@@ -233,6 +235,45 @@ const Account: React.FC<AccountProps> = ({
                             />
                         </div>
                     </div>
+
+                    {/* Notification Settings */}
+                    {notificationSettings && setNotificationSettings && (
+                        <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-8">
+                            <h3 className="text-xs font-black uppercase tracking-widest text-indigo-500 mb-6">Notification Preferences</h3>
+                            <Toggle
+                                label="New Chatter"
+                                active={notificationSettings.chatter}
+                                onToggle={() => setNotificationSettings(prev => ({ ...prev, chatter: !prev.chatter }))}
+                            />
+                            <div className="pl-4 border-l-2 border-gray-100 space-y-1">
+                                <Toggle
+                                    label="Quick Flirts"
+                                    active={notificationSettings.quickFlirts}
+                                    onToggle={() => setNotificationSettings(prev => ({ ...prev, quickFlirts: !prev.quickFlirts }))}
+                                />
+                                <Toggle
+                                    label="All Flirts"
+                                    active={notificationSettings.allFlirts}
+                                    onToggle={() => setNotificationSettings(prev => ({ ...prev, allFlirts: !prev.allFlirts }))}
+                                />
+                            </div>
+                            <Toggle
+                                label="Direct Messages"
+                                active={notificationSettings.messages}
+                                onToggle={() => setNotificationSettings(prev => ({ ...prev, messages: !prev.messages }))}
+                            />
+                            <Toggle
+                                label="Partner Thoughts"
+                                active={notificationSettings.thoughts}
+                                onToggle={() => setNotificationSettings(prev => ({ ...prev, thoughts: !prev.thoughts }))}
+                            />
+                            <Toggle
+                                label="New Bounties / Favors"
+                                active={notificationSettings.newFavors}
+                                onToggle={() => setNotificationSettings(prev => ({ ...prev, newFavors: !prev.newFavors }))}
+                            />
+                        </div>
+                    )}
 
                     {/* Reset Section */}
                     <div className="bg-red-50/50 rounded-[2.5rem] shadow-sm border border-red-100 p-8">

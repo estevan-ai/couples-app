@@ -75,6 +75,8 @@ export interface ChatterNote {
   expiresAt?: number;
   status?: 'sent' | 'delivered' | 'read';
   readAt?: number;
+  audioPath?: string;
+  audioIv?: string;
 }
 
 export interface JournalEntry {
@@ -134,6 +136,15 @@ export interface SharingSettings {
   shareUnsure: boolean;
   shareBoundaries: boolean;
   shareFavors: boolean;
+}
+
+export interface NotificationSettings {
+  chatter: boolean;
+  quickFlirts: boolean;
+  allFlirts: boolean;
+  messages: boolean;
+  thoughts: boolean;
+  newFavors: boolean;
 }
 
 export interface Highlight {

@@ -222,7 +222,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
             {/* New Thought Banner */}
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-[2.5rem] p-8 text-center text-white shadow-xl shadow-blue-200 relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-full h-full bg-white opacity-5 group-hover:opacity-10 transition-opacity"></div>
+                <div className="absolute top-0 left-0 w-full h-full bg-white opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none"></div>
                 <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 shadow-inner">
                     📓
                 </div>
