@@ -11,6 +11,11 @@ interface ConnectionCenterProps {
     onPinInsight: (text: string, source: string) => void;
     onNavigateTerm?: (termId: number) => void;
     flirts?: import('../types').Flirt[]; // Optional for now to avoid break if not passed
+    onMarkRead: (noteId: string, authorUid: string) => void;
+    onToggleReaction: (noteId: string, authorUid: string, emoji: string) => void;
+    onMarkAllRead: () => void;
+    onMarkAllUnread: () => void;
+    onToggleRead: (noteId: string, currentStatus: string | undefined, authorUid: string) => void;
 }
 
 const ConnectionCenter: React.FC<ConnectionCenterProps> = (props) => {

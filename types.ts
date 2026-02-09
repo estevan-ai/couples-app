@@ -70,13 +70,16 @@ export interface ChatterNote {
   encryptedKey?: string; // The wrapped AES key (Base64)
   storagePath?: string; // Path to .bin file
   senderId?: string;
-  type?: 'text' | 'image_zk';
+  type?: 'text' | 'image_zk' | 'note' | 'reaction';
   // Flirt Features
   expiresAt?: number;
   status?: 'sent' | 'delivered' | 'read';
   readAt?: number;
   audioPath?: string;
   audioIv?: string;
+  reactions?: { author: string, emoji: string, timestamp?: number }[];
+  firestoreId?: string; // Document ID for updates
+  category?: 'sweet' | 'thoughtful' | 'spicy'; // Restoration of mood/hashtags
 }
 
 export interface JournalEntry {
@@ -116,7 +119,7 @@ export interface Bounty {
   rewardTerm: Term;
   task: string;
   deadline: string;
-  status: 'available' | 'claimed' | 'done';
+  status: 'available' | 'claimed' | 'done' | 'archived';
   postedBy: string;
   claimedBy: string | null;
 }

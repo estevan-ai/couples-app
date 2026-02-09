@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['logo.png', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
         name: "The Couples' Currency",
@@ -27,6 +27,10 @@ export default defineConfig({
       workbox: {
         importScripts: ['firebase-messaging-sw.js'], // Import FCM script
         globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+      },
+      devOptions: {
+        enabled: true,
+        type: 'module' // usage with prompt-update usually needs module type in dev
       }
     })
   ],

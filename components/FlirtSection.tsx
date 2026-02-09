@@ -11,216 +11,13 @@ import { getPrivateKey } from '../utils/keyStorage';
 import { compressImage } from '../utils/image';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import ActivityFeed from './ActivityFeed';
+import MessageBubble from './MessageBubble';
+import SecurePhoto from './SecurePhoto';
+import SecureAudio from './SecureAudio';
+import TimeLeft from './TimeLeft';
 
-interface SecurePhotoProps {
-    path?: string; // Legacy
-    storagePath?: string; // ZK
-    ivStr?: string;
-    encryptedKey?: string; // ZK: Wrapped AES Key
-    sharedKey: CryptoKey | null; // Legacy
-    timestamp: number;
-    isMine: boolean;
-}
-
-const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, encryptedKey, sharedKey, timestamp, isMine }) => {
-    const [url, setUrl] = useState<string | null>(null);
-    const [isDecrypting, setIsDecrypting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [isRevealed, setIsRevealed] = useState(false);
-
-    const handleDecrypt = async () => {
-        setIsDecrypting(true);
-        setError(null);
-        try {
-            let blob: Blob;
-
-            // Scenario A: Zero-Knowledge (Hybrid)
-            if (encryptedKey && storagePath) {
-                // BLIND DROP Override: allow sender to view if they have the key (Shared Key fallback or if we duplicate logic later)
-                // For now, ZK is strictly 1-to-1. If isMine, we technically don't have the key to unwrap if we only encrypted for partner.
-                // However, user ASKED to see it. 
-                // TEMPORARY FIX: If isMine in ZK, we can't show it unless we stored a copy. 
-                // We'll stick to logic: If isMine + ZK -> Block (Blind Drop). 
-                // If the user wants to see it, they should use the Shared Key mode (default if no PubKeys).
-
-                if (isMine) {
-                    // throw new Error("Blind Drop: Only partner can view."); 
-                    // User REQUESTED visibility. If we can't decrypt, we can't.
-                    // But let's see if we can fall back? No.
-                    // Validation: If I generated a random AES key, wrapped it with Partner's PubKey, and threw away the AES key... I cannot decrypt it.
-                    // So "Blind Drop" is physically enforced.
-                    throw new Error("Blind Drop: Key not saved for sender.");
-                }
-
-                // 1. Get My Private Key
-                const myPrivateKey = await getPrivateKey();
-                if (!myPrivateKey) throw new Error("Private Key not found on device.");
-
-                // 2. Unwrap the AES Key
-                const aesKey = await unwrapAESKey(encryptedKey, myPrivateKey);
-
-                // 3. Download Encrypted Blob
-                const blobRef = ref(storage, storagePath);
-                const encryptedBlob = await getBlob(blobRef);
-
-                // 4. Decrypt Image
-                const iv = ivStr ? stringToIv(ivStr) : new Uint8Array(12);
-                blob = await decryptBlob(encryptedBlob, aesKey, iv);
-            }
-            // Scenario B: Legacy Symmetric
-            else if (sharedKey && path && ivStr) {
-                const storageRef = ref(storage, path);
-                const encryptedBlob = await getBlob(storageRef);
-                blob = await decryptBlob(encryptedBlob, sharedKey, stringToIv(ivStr));
-            } else {
-                throw new Error("Missing decryption parameters");
-            }
-
-            setUrl(URL.createObjectURL(blob));
-        } catch (err: any) {
-            console.error("Decryption Error:", err);
-            setError(err.message.includes("Blind Drop") ? "Blind Drop" : "Locked");
-        } finally {
-            setIsDecrypting(false);
-        }
-    };
-
-    // Auto-decrypt only if NOT mine (or if legacy shared key exists which both have)
-    useEffect(() => {
-        if (!url && (encryptedKey || sharedKey)) {
-            // Try to decrypt everything we can
-            if (encryptedKey && isMine) return;
-            handleDecrypt();
-        }
-    }, [sharedKey, encryptedKey, path, storagePath, ivStr, isMine]);
-
-    if (url) {
-        return (
-            <div
-                className="relative mt-2 inline-block select-none touch-none"
-                onMouseDown={() => setIsRevealed(true)}
-                onMouseUp={() => setIsRevealed(false)}
-                onMouseLeave={() => setIsRevealed(false)}
-                onTouchStart={() => setIsRevealed(true)}
-                onTouchEnd={() => setIsRevealed(false)}
-                style={{ WebkitUserSelect: 'none', userSelect: 'none', WebkitTouchCallout: 'none' }}
-            >
-                <img
-                    src={url}
-                    alt="Secure content"
-                    className={`rounded-xl w-full max-h-64 object-cover shadow-sm border border-gray-100 transition-all duration-200 pointer-events-none ${isRevealed ? 'filter-none' : 'blur-xl opacity-50'}`}
-                />
-                {!isRevealed && (
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <span className="text-2xl drop-shadow-md">👆 Hold</span>
-                    </div>
-                )}
-            </div>
-        );
-    }
-
-    // Sender View (Blind Drop)
-    if (encryptedKey && isMine) {
-        return (
-            <div className="mt-2 p-3 rounded-xl border border-dashed border-gray-300 bg-gray-50 inline-block text-center">
-                <span className="text-2xl block mb-1">🕵️‍♂️</span>
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Secret Sent</span>
-                <span className="text-[9px] text-gray-400 opacity-70">(End-to-End Encrypted)</span>
-            </div>
-        );
-    }
-
-    return (
-        <div className="mt-2 p-1 rounded-xl border border-gray-100 bg-gray-50 inline-block">
-            <button
-                onClick={handleDecrypt}
-                disabled={isDecrypting}
-                className="w-16 h-16 rounded-lg bg-gray-200 flex items-center justify-center text-xl hover:bg-gray-300 transition relative"
-                title="View Photo"
-            >
-                {isDecrypting ? '⏳' : error === 'Blind Drop' ? '🕵️‍♂️' : error ? '🔒' : '🖼️'}
-            </button>
-            {error && error !== 'Blind Drop' && <p className="text-[10px] text-red-500 mt-1 max-w-[100px] leading-tight">{error}</p>}
-        </div>
-    );
-};
-
-interface SecureAudioProps {
-    path?: string;
-    ivStr?: string;
-    encryptedKey?: string;
-    sharedKey: CryptoKey | null;
-    isMine: boolean;
-}
-
-const SecureAudio: React.FC<SecureAudioProps> = ({ path, ivStr, encryptedKey, sharedKey, isMine }) => {
-    const [audioUrl, setAudioUrl] = useState<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const audioRef = useRef<HTMLAudioElement>(null);
-
-    const handleLoad = async () => {
-        if (audioUrl) {
-            if (audioRef.current) {
-                if (isPlaying) audioRef.current.pause();
-                else audioRef.current.play();
-                setIsPlaying(!isPlaying);
-            }
-            return;
-        }
-
-        try {
-            // Decryption Logic (Reused from SecurePhoto roughly)
-            let blob: Blob;
-
-            // Simple Logic: Prefer SharedKey if available (Legacy/Group), else ZK
-            if (sharedKey && path && ivStr) {
-                const storageRef = ref(storage, path);
-                const encryptedBlob = await getBlob(storageRef);
-                blob = await decryptBlob(encryptedBlob, sharedKey, stringToIv(ivStr));
-            } else if (encryptedKey) {
-                if (isMine) throw new Error("Blind Drop");
-                const myPrivateKey = await getPrivateKey();
-                if (!myPrivateKey) return;
-                const aesKey = await unwrapAESKey(encryptedKey, myPrivateKey);
-                // Need storage path? Audio notes might reuse photo path fields or need new ones.
-                // Assuming path is passed.
-                const storageRef = ref(storage, path);
-                const encryptedBlob = await getBlob(storageRef);
-                blob = await decryptBlob(encryptedBlob, aesKey, stringToIv(ivStr || ''));
-            } else {
-                return;
-            }
-
-            const url = URL.createObjectURL(blob);
-            setAudioUrl(url);
-            setTimeout(() => {
-                if (audioRef.current) {
-                    audioRef.current.play();
-                    setIsPlaying(true);
-                }
-            }, 100);
-
-        } catch (e) {
-            console.error("Audio Load Error", e);
-        }
-    };
-
-    return (
-        <div className="flex items-center gap-2 mt-1">
-            <button onClick={handleLoad} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-full transition text-xs font-bold text-gray-700">
-                <span>{isPlaying ? '⏸️' : '▶️'}</span>
-                <span>Voice Note</span>
-            </button>
-            <audio
-                ref={audioRef}
-                src={audioUrl || undefined}
-                onEnded={() => setIsPlaying(false)}
-                onPause={() => setIsPlaying(false)}
-                className="hidden"
-            />
-        </div>
-    );
-};
+// SecurePhoto and SecureAudio extracted to separate files
 
 const AudioRecorder: React.FC<{ onStop: (blob: Blob) => void }> = ({ onStop }) => {
     const [recording, setRecording] = useState(false);
@@ -333,29 +130,7 @@ const AudioRecorder: React.FC<{ onStop: (blob: Blob) => void }> = ({ onStop }) =
     );
 };
 
-const TimeLeft: React.FC<{ timestamp: number; expiresAt?: number }> = ({ timestamp, expiresAt }) => {
-    const calculateTimeLeft = () => {
-        const now = Date.now();
-        const expires = expiresAt || (timestamp + (48 * 60 * 60 * 1000));
-        const diff = expires - now;
-
-        if (diff <= 0) return 'Expired';
-        const h = Math.floor(diff / (1000 * 60 * 60));
-        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        return `${h}h ${m}m left`;
-    };
-
-    const [left, setLeft] = useState(calculateTimeLeft());
-
-    useEffect(() => {
-        const timer = setInterval(() => {
-            setLeft(calculateTimeLeft());
-        }, 60000);
-        return () => clearInterval(timer);
-    }, [timestamp]);
-
-    return <span className="text-[10px] font-mono text-xs opacity-70 flex items-center gap-1">⏳ {left}</span>;
-};
+// TimeLeft removed (imported)
 
 import { EMOJI_PATTERNS } from '../constants/emojiPatterns';
 
@@ -370,44 +145,17 @@ interface FlirtSectionProps {
     onNavigateContext?: (contextId: string) => void;
     flirts?: import('../types').Flirt[];
     onMarkRead: (noteId: string, authorUid: string) => void;
+    onMarkAllRead: () => void;
+    onMarkAllUnread: () => void;
+    onToggleReaction: (noteId: string, authorUid: string, emoji: string) => void;
+    onToggleRead: (noteId: string, currentStatus: string | undefined, authorUid: string) => void;
 }
 
-const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatter, onAddNote, sharedKey, onDeleteNote, onPinInsight, onNavigateContext, flirts, onMarkRead }) => {
-    const [subTab, setSubTab] = useState<'flirts' | 'inbox'>('flirts');
-
-    // Auto-mark read when viewing flirts
-    useEffect(() => {
-        if (subTab === 'flirts') {
-            const unread = Object.values(chatter).flat().filter((n: ChatterNote) =>
-                n.author !== currentUser.name && n.status !== 'read'
-            );
-            unread.forEach(note => {
-                onMarkRead(note.id, note.author === currentUser.name ? currentUser.uid : (partner?.uid || ''));
-                // Wait, if author is partner, we need partner's UID.
-                // If partner is not null, use partner.uid. 
-                // But wait, the previous logic said we write to the AUTHOR'S collection.
-                // So if Partner wrote it, it is in Partner's collection.
-            });
-        }
-    }, [chatter, subTab, currentUser, partner]); // Dependency on chatter updates
-
-    const [draft, setDraft] = useState('');
-    const [isDrafting, setIsDrafting] = useState(false);
-    const [uploadStatus, setUploadStatus] = useState<'idle' | 'compressing' | 'encrypting' | 'uploading'>('idle');
-    const [uploadProgress, setUploadProgress] = useState(0);
-    const [aiTone, setAiTone] = useState<'sweet' | 'spicy' | 'thoughtful'>('sweet');
-    const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-    const [isComposing, setIsComposing] = useState(false);
-    const [compSubject, setCompSubject] = useState('');
-    const [compText, setCompText] = useState('');
-
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const cameraInputRef = useRef<HTMLInputElement>(null);
-    const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatter, onAddNote, sharedKey, onDeleteNote, onPinInsight, onNavigateContext, flirts, onMarkRead, onToggleReaction, onMarkAllRead, onMarkAllUnread, onToggleRead }) => {
+    // ... code ...
 
 
-
+    // ... (rest of component) ...
     // 1. Thread Computation
     const threads = useMemo(() => {
         const t: Record<string, { subject: string; lastNote: ChatterNote; notes: ChatterNote[] }> = {};
@@ -426,28 +174,13 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
         return t;
     }, [chatter]);
 
-    // ... (omitted thread sorting & flirt activity to keep file size small in edit, but wait, need to keep existing) ...
-    // Actually, I can just insert the state at line 347 and replace handleSendFlirt at 415. 
-    // Let's do two separate edits to be safe or one large block if contiguous? 
-    // They are not contiguous.
-    // Let's do the state first.
-
-    // WAIT, I can target "const scrollRef = ..." area to insert state.
-
-    // And then handleSendFlirt.
-
-    // Let's try to do it in one go if I can match the context.
-    // "1. Thread Computation" is at line 348.
-
-    // I will use a smaller chunk for state.
-
-
     const sortedThreadIds = useMemo(() => {
         return Object.keys(threads).sort((a, b) => threads[b].lastNote.timestamp - threads[a].lastNote.timestamp);
     }, [threads]);
 
-    // 2. Activity Computation for "Fast Flirts"
-    const flirtActivity = useMemo(() => {
+
+    // 2. Activity Feed (Notifications)
+    const activityFeed = useMemo(() => {
         const activity: any[] = [];
         const now = Date.now();
         const EXPIRE_MS = 48 * 60 * 60 * 1000;
@@ -457,39 +190,157 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
             notes.forEach(note => {
                 if (now - note.timestamp > EXPIRE_MS) return;
 
-                let contextName = "General";
-                let termCategory: string | undefined = undefined;
-
-                if (contextId.startsWith('term-')) {
-                    const id = parseInt(contextId.split('-')[1]);
-                    const term = termsData.find(t => t.id === id);
-                    contextName = term?.name || "Intimacy Term";
-                    termCategory = term?.category; // 'Touch', 'Service', etc. 
-                    // Or if we want mapping to 'love'/'like' colors, we check bookmarks? 
-                    // User said "Showcase those just like we have on the bank".
-                    // Bank uses Category colors (Physical Touch -> Pink/Red?).
-                    // Let's use Category.
+                // Construct context name for generic items
+                let contextName = 'Unknown';
+                if (contextId === 'general-flirt') {
+                    contextName = 'Fast Flirt';
                 } else if (contextId.startsWith('flirt-')) {
                     const id = contextId.replace('flirt-', '');
-                    // Look up in flirts prop
                     const foundFlirt = flirts?.find(f => f.id === id);
                     contextName = foundFlirt ? `Flirt: ${foundFlirt.text.substring(0, 15)}...` : "Flirt";
-                } else if (contextId.includes('thread-')) {
-                    // Skip inbox threads in the "Flirt" feed unless they are contextually relevant
-                    // For now, let's keep them separate to keep "Flirts" clean
-                    return;
+                } else if (contextId.startsWith('thread-')) {
+                    const thread = threads[contextId];
+                    contextName = thread ? `Thread: ${thread.subject}` : "Thread";
+                } else if (contextId.includes('term-')) {
+                    contextName = 'Directory Update';
+                } else if (contextId.includes('bounty-')) {
+                    contextName = 'Favor Update';
                 }
-                activity.push({ ...note, contextId, contextName, termCategory });
+
+                activity.push({
+                    ...note,
+                    contextId,
+                    contextName,
+                    authorUid: note.author === currentUser.name ? currentUser.uid : (partner?.uid || ''),
+                    type: 'note'
+                });
+
+                // Add Reactions as separate activity items
+                if (note.reactions && Array.isArray(note.reactions)) {
+                    note.reactions.forEach(reaction => {
+                        // Only show reactions from partner (or maybe my own too? let's show all for now)
+                        // If sorting by timestamp, we need a timestamp. 
+                        // Legacy reactions won't have it, so we default to note timestamp + 1s
+                        const reactionTime = reaction.timestamp || (note.timestamp + 1000);
+
+                        if (now - reactionTime > EXPIRE_MS) return;
+
+                        activity.push({
+                            id: `reaction-${note.id}-${reaction.emoji}-${reaction.author}`, // Unique ID for key
+                            firestoreId: note.firestoreId, // Link back to original note for read status toggling? Maybe not needed for reaction itself but good context
+                            timestamp: reactionTime,
+                            author: reaction.author,
+                            text: `Reacted ${reaction.emoji} to: "${note.text.substring(0, 20)}..."`,
+                            contextId,
+                            contextName,
+                            type: 'reaction',
+                            status: 'read', // Reactions don't strictly have read status yet, default to read
+                            authorUid: reaction.author === currentUser.name ? currentUser.uid : (partner?.uid || '')
+                        });
+                    });
+                }
+            });
+        });
+        return activity.sort((a, b) => b.timestamp - a.timestamp);
+    }, [chatter, flirts, threads, currentUser.uid, partner?.uid]);
+
+    // 3. Flirt Activity (Direct Messages)
+    const flirtActivity = useMemo(() => {
+        const activity: any[] = [];
+        const now = Date.now();
+        const EXPIRE_MS = 48 * 60 * 60 * 1000;
+
+        Object.keys(chatter).forEach(contextId => {
+            const notes = chatter[contextId];
+            notes.forEach(note => {
+                if (now - note.timestamp > EXPIRE_MS) return;
+                if (contextId === 'general-flirt') {
+                    activity.push({ ...note, contextId, contextName: 'Fast Flirt' });
+                } else if (contextId.startsWith('flirt-')) {
+                    const id = contextId.replace('flirt-', '');
+                    const foundFlirt = flirts?.find(f => f.id === id);
+                    const contextName = foundFlirt ? `Flirt: ${foundFlirt.text.substring(0, 15)}...` : "Flirt";
+                    activity.push({ ...note, contextId, contextName });
+                }
             });
         });
         return activity.sort((a, b) => a.timestamp - b.timestamp);
     }, [chatter, flirts]);
 
+    const [subTab, setSubTab] = useState<'flirts' | 'inbox' | 'activity'>('flirts');
+
+    // Auto-mark read when viewing flirts
     useEffect(() => {
-        if (scrollRef.current) {
+        if (subTab === 'flirts') {
+            const unread = Object.values(chatter).flat().filter((n: ChatterNote) =>
+                n.author !== currentUser.name && n.status !== 'read'
+            );
+            unread.forEach(note => {
+                onMarkRead(note.firestoreId || note.id, note.author === currentUser.name ? currentUser.uid : (partner?.uid || ''));
+            });
+        }
+    }, [chatter, subTab, currentUser, partner]);
+
+    const [draft, setDraft] = useState('');
+    const [highlightedNoteId, setHighlightedNoteId] = useState<string | null>(null);
+    const [isDrafting, setIsDrafting] = useState(false);
+    const [isComposerExpanded, setIsComposerExpanded] = useState(false);
+    const [uploadStatus, setUploadStatus] = useState<'idle' | 'compressing' | 'encrypting' | 'uploading'>('idle');
+    const [compSubject, setCompSubject] = useState('');
+    const [compText, setCompText] = useState('');
+    const [aiTone, setAiTone] = useState<'sweet' | 'spicy' | 'thoughtful'>('sweet');
+    const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+    const [isComposing, setIsComposing] = useState(false);
+
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const cameraInputRef = useRef<HTMLInputElement>(null);
+    const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+
+    useEffect(() => {
+        if (scrollRef.current && !highlightedNoteId) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [flirtActivity, activeThreadId, threads]);
+    }, [flirtActivity, activeThreadId, threads, highlightedNoteId]);
+
+    // Scroll to highlighted note
+    useEffect(() => {
+        if (highlightedNoteId && (subTab === 'flirts' || subTab === 'inbox')) {
+            setTimeout(() => {
+                const el = document.getElementById(`note-${highlightedNoteId}`);
+                if (el) {
+                    // Calculate position to be 20% from top
+                    // We need to account for the container's scroll position if it's within a container, 
+                    // or window scroll if it's the main window. 
+                    // FlirtSection's list is in `scrollRef`.
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' }); // Keep center for now as fallback or if calculation fails. 
+
+                    // Actually, let's try to align it to the top with some padding.
+                    // block: 'start' puts it at the very top.
+                    // We can use scrollIntoView({ block: 'start', behavior: 'smooth' }) and add scroll-margin-top to the CSS, 
+                    // but we can't easily change CSS dynamically here.
+
+                    // Let's try manual scroll on the container
+                    if (scrollRef.current) {
+                        const container = scrollRef.current;
+                        const elementTop = el.offsetTop;
+                        const containerHeight = container.clientHeight;
+                        // Target position: Element top should be at 20% of container height
+                        const targetScrollTop = elementTop - (containerHeight * 0.2);
+
+                        container.scrollTo({
+                            top: Math.max(0, targetScrollTop),
+                            behavior: 'smooth'
+                        });
+                    }
+
+                    el.classList.add('ring-4', 'ring-indigo-200', 'rounded-xl');
+                    setTimeout(() => el.classList.remove('ring-4', 'ring-indigo-200', 'rounded-xl'), 2000);
+                    setHighlightedNoteId(null);
+                }
+            }, 500);
+        }
+    }, [highlightedNoteId, subTab, flirtActivity, threads]);
 
     const [stagedImage, setStagedImage] = useState<File | null>(null);
 
@@ -516,7 +367,6 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
         try {
             // 1. Handle Audio
             if (audioBlob) {
-                // ... (existing audio logic) ...
                 if (!sharedKey) {
                     showToast("Encryption key missing for audio.", 'error');
                     setUploadStatus('idle');
@@ -536,7 +386,6 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
 
             // 2. Handle Image
             if (stagedImage) {
-                // ... (Refactored image logic) ...
                 // 1. Fetch Partner's Public Key (ZK Check)
                 let partnerPubKey: CryptoKey | null = null;
                 if (partner && (partner as any).publicKey) {
@@ -600,6 +449,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
             setUploadStatus('idle');
             showToast("Sent!", 'success');
             if (fileInputRef.current) fileInputRef.current.value = '';
+            if (cameraInputRef.current) cameraInputRef.current.value = '';
 
         } catch (err: any) {
             console.error(err);
@@ -671,7 +521,6 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
     };
 
     const [showSecurityInfo, setShowSecurityInfo] = useState(false);
-    const [showEmojiGuide, setShowEmojiGuide] = useState(false);
     const [expiration, setExpiration] = useState<number>(48 * 60 * 60 * 1000); // Default 48h
 
     const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -682,11 +531,6 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
         setToastType(type);
         setTimeout(() => setToastMessage(null), 3000);
     };
-
-    // Removed debugLogs state and addDebugLog function
-
-
-
 
     return (
         <div className="max-w-6xl mx-auto py-6 px-4">
@@ -723,7 +567,6 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
                         </div>
                     </div>
                 )}
-                {/* Debug Log Overlay */}
                 {/* Toast Notification */}
                 {toastMessage && (
                     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-300">
@@ -736,29 +579,223 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
                         </div>
                     </div>
                 )}
-                <div className="flex bg-gray-100 p-1.5 rounded-2xl w-full sm:w-auto">
+            </header>
+
+            {/* Collapsible Composer Section */}
+            <div className="max-w-4xl mx-auto px-4 mb-6">
+                {!isComposerExpanded ? (
+                    // Collapsed State
+                    <div
+                        onClick={() => setIsComposerExpanded(true)}
+                        className="bg-white rounded-full shadow-sm border border-gray-100 p-2 pl-6 flex items-center justify-between cursor-text hover:shadow-md transition-shadow group"
+                    >
+                        <span className="text-gray-400 font-medium text-lg">Draft a flirt or deep thought...</span>
+                        <div className="flex gap-2">
+                            <button className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-500 flex items-center justify-center hover:bg-indigo-100 transition">
+                                ✨
+                            </button>
+                            <button className="w-10 h-10 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center hover:bg-gray-100 transition">
+                                📸
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    // Expanded State
+                    <div className="bg-white rounded-3xl shadow-xl border border-indigo-50 p-6 animate-in zoom-in-95 duration-200">
+                        <div className="mb-4">
+                            <p className="text-xs font-bold text-gray-400 mb-3 uppercase tracking-widest">
+                                AI Mood Assistant
+                            </p>
+                            <div className="flex justify-between items-start">
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex gap-2">
+                                        {/* Desktop/Tablet: Buttons */}
+                                        <div className="hidden sm:flex gap-2">
+                                            {(['sweet', 'thoughtful', 'spicy'] as const).map(tone => (
+                                                <button
+                                                    key={tone}
+                                                    onClick={() => setAiTone(tone)}
+                                                    className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest transition flex items-center gap-1.5 ${aiTone === tone ? 'bg-indigo-600 text-white shadow-md ring-2 ring-indigo-100' : 'bg-white border border-gray-100 text-gray-400 hover:bg-gray-50 hover:border-gray-200'}`}
+                                                >
+                                                    <span>{tone === 'sweet' ? '🍬' : tone === 'thoughtful' ? '🤔' : '🌶️'}</span>
+                                                    {tone}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {/* Mobile: Dropdown */}
+                                        <div className="sm:hidden relative">
+                                            <select
+                                                value={aiTone}
+                                                onChange={(e) => setAiTone(e.target.value as any)}
+                                                className="appearance-none bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full border border-indigo-100 outline-none pr-8"
+                                            >
+                                                <option value="sweet">🍬 Sweet</option>
+                                                <option value="thoughtful">🤔 Thoughtful</option>
+                                                <option value="spicy">🌶️ Spicy</option>
+                                            </select>
+                                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-indigo-700">
+                                                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {aiTone && (
+                                        <div className="mt-1 bg-indigo-50/50 rounded-xl p-3 border border-indigo-50 animate-in fade-in slide-in-from-top-1">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-lg">{aiTone === 'sweet' ? '🥰' : aiTone === 'thoughtful' ? '🌟' : '🔥'}</span>
+                                                <p className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">
+                                                    {aiTone === 'sweet' ? 'Sweet & Romantic' : aiTone === 'thoughtful' ? 'Deep & Appreciation' : 'Hot & Spicy'}
+                                                </p>
+                                            </div>
+                                            <p className="text-xs text-indigo-700 italic">
+                                                "{aiTone === 'sweet' ? "Thinking of you..." : aiTone === 'thoughtful' ? "I appreciate how you..." : "Can't wait to see you..."}"
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                                <button onClick={() => setIsComposerExpanded(false)} className="text-xs font-bold text-gray-300 hover:text-gray-500 px-3 py-1 bg-gray-50 rounded-full hover:bg-gray-100 transition uppercase tracking-widest flex items-center justify-center">
+                                    <span className="sm:hidden text-lg">✕</span>
+                                    <span className="hidden sm:inline">Cancel</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="relative mb-4">
+                            <textarea
+                                value={draft}
+                                onChange={e => setDraft(e.target.value)}
+                                placeholder="Type it yourself or use the magic wand above, or try a combination of the two..."
+                                rows={4}
+                                className="w-full bg-gray-50 p-4 rounded-2xl border-none outline-none focus:ring-2 focus:ring-indigo-100 text-lg font-medium text-gray-700 resize-none"
+                                autoFocus
+                            />
+                            {/* Attachments & Preview */}
+                            {stagedImage && (
+                                <div className="absolute bottom-4 left-4 z-10">
+                                    <div className="relative group">
+                                        <img src={URL.createObjectURL(stagedImage)} alt="Draft" className="w-20 h-20 rounded-xl object-cover shadow-lg border-2 border-white" />
+                                        <button onClick={() => setStagedImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center shadow-sm">✕</button>
+                                    </div>
+                                </div>
+                            )}
+                            {audioBlob && (
+                                <div className="absolute bottom-4 right-4 flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1.5 rounded-full text-xs font-bold">
+                                    <span>🎤 Voice Note Ready</span>
+                                    <button onClick={() => setAudioBlob(null)} className="ml-2 w-5 h-5 bg-blue-200 rounded-full flex items-center justify-center">✕</button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+                            <div className="flex gap-2 items-center justify-between sm:justify-start">
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={generateAIDraft} disabled={isDrafting} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded-xl transition" title="AI Draft">
+                                        {isDrafting ? <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div> : <span className="text-xl">✨</span>}
+                                    </button>
+                                    <button type="button" onClick={() => cameraInputRef.current?.click()} className="p-2 text-gray-400 hover:bg-gray-50 rounded-xl transition" title="Camera">
+                                        <span className="text-xl">📸</span>
+                                    </button>
+                                    <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-gray-400 hover:bg-gray-50 rounded-xl transition" title="Gallery">
+                                        <span className="text-xl">🖼️</span>
+                                    </button>
+                                    <AudioRecorder onStop={(blob) => setAudioBlob(blob)} />
+                                </div>
+                                <div className="h-6 w-px bg-gray-200 mx-2 hidden sm:block"></div>
+                                <select
+                                    value={expiration}
+                                    onChange={(e) => setExpiration(Number(e.target.value))}
+                                    className="bg-transparent text-xs font-bold text-gray-500 border-none outline-none cursor-pointer"
+                                >
+                                    <option value={30 * 60 * 1000}>30m</option>
+                                    <option value={2 * 60 * 60 * 1000}>2h</option>
+                                    <option value={24 * 60 * 60 * 1000}>24h</option>
+                                    <option value={48 * 60 * 60 * 1000}>48h</option>
+                                </select>
+                            </div>
+                            <button
+                                onClick={(e) => {
+                                    handleSendFlirt(e as any);
+                                    setIsComposerExpanded(false);
+                                }}
+                                disabled={!draft.trim() && !stagedImage && !audioBlob}
+                                className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-indigo-200 w-full sm:w-auto"
+                            >
+                                SEND
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex justify-center mb-6">
+                <div className="bg-gray-100 p-1 rounded-2xl inline-flex">
                     <button
                         onClick={() => setSubTab('flirts')}
-                        className={`flex-1 sm:px-8 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${subTab === 'flirts' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all text-sm ${subTab === 'flirts' ? 'bg-white text-indigo-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                        💘 Fast Flirts
+                        Latest Flirts
+                    </button>
+                    <button
+                        onClick={() => setSubTab('activity')}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all text-sm relative flex items-center gap-2 ${subTab === 'activity' ? 'bg-white text-indigo-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                        Activity Log
+                        {activityFeed.filter(item => item.author !== currentUser.name && item.status !== 'read').length > 0 && (
+                            <span className="relative flex h-3 w-3">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                            </span>
+                        )}
                     </button>
                     <button
                         onClick={() => setSubTab('inbox')}
-                        className={`flex-1 sm:px-8 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${subTab === 'inbox' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        className={`px-6 py-2 rounded-xl font-bold transition-all text-sm ${subTab === 'inbox' ? 'bg-white text-indigo-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                     >
-                        📩 Inbox
+                        Threads
                     </button>
                 </div>
-            </header>
+            </div>
 
-            {subTab === 'flirts' ? (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                    {/* Chat Column */}
-                    <div className="lg:col-span-5 h-[600px] flex flex-col bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+            {/* Activity View */}
+            {subTab === 'activity' && (
+                <div className="flex justify-end gap-2 mb-4 px-4">
+                    <button onClick={onMarkAllRead} className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition">
+                        Mark All Read
+                    </button>
+                    <button onClick={onMarkAllUnread} className="text-xs font-bold text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition">
+                        Mark All Unread
+                    </button>
+                </div>
+            )}
+            {subTab === 'activity' && (
+                <div className="max-w-2xl mx-auto mb-10">
+                    <ActivityFeed
+                        activity={activityFeed}
+                        onNavigateContext={(ctx, targetId) => {
+                            if (ctx === 'general-flirt' || ctx.startsWith('flirt-')) {
+                                setSubTab('flirts');
+                                if (targetId) setHighlightedNoteId(targetId);
+                            } else if (ctx.startsWith('thread-')) {
+                                setSubTab('inbox');
+                                setActiveThreadId(ctx);
+                                if (targetId) setHighlightedNoteId(targetId);
+                            } else {
+                                // For external contexts (terms, bounties), use the prop
+                                if (onNavigateContext) onNavigateContext(ctx);
+                            }
+                        }}
+                        onToggleRead={onToggleRead}
+                    />
+                </div>
+            )}
+
+            {/* Flirts View */}
+            {subTab === 'flirts' && (
+                <div className="max-w-4xl mx-auto mb-10">
+                    <div className="h-[600px] flex flex-col bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                         <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                            <h3 className="font-bold text-gray-700">Quick Connect</h3>
-                            <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">Ephemeral (48h)</span>
+                            <h3 className="font-bold text-gray-700">Direct Messages</h3>
+                            <span className="text-[10px] bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">Ephemeral (48h)</span>
                         </div>
                         <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-[#f9f9fb] scroll-smooth">
                             {flirtActivity.length === 0 ? (
@@ -768,66 +805,22 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
                                 </div>
                             ) : (
                                 flirtActivity.map((note, idx) => (
-                                    <div key={idx} className={`flex flex-col ${note.author === currentUser.name ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-1 duration-300 group`}>
-                                        <div className="flex items-center gap-2 max-w-[90%] justify-end">
-                                            {note.author === currentUser.name && (
-                                                <button onClick={() => onDeleteNote(note.id)} className="opacity-0 group-hover:opacity-100 text-red-300 hover:text-red-500 transition px-2">
-                                                    🗑️
-                                                </button>
-                                            )}
-                                            <div className={`relative p-4 rounded-2xl text-sm shadow-sm transition-all ${note.author === currentUser.name ? 'bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'}`}>
-                                                {(note.photoPath && note.photoIv) || (note.storagePath && note.encryptedKey) ? (
-                                                    <SecurePhoto
-                                                        path={note.photoPath}
-                                                        storagePath={note.storagePath}
-                                                        ivStr={note.photoIv}
-                                                        encryptedKey={note.encryptedKey}
-                                                        sharedKey={sharedKey}
-                                                        timestamp={note.timestamp}
-                                                        isMine={note.author === currentUser.name}
-                                                    />
-                                                ) : (note.audioPath && note.audioIv) ? (
-                                                    <SecureAudio
-                                                        path={note.audioPath}
-                                                        ivStr={note.audioIv}
-                                                        encryptedKey={note.encryptedKey}
-                                                        sharedKey={sharedKey}
-                                                        isMine={note.author === currentUser.name}
-                                                    />
-                                                ) : (
-                                                    <p className="leading-relaxed font-medium text-[15px]">{note.text}</p>
-                                                )}
+                                    <div id={`note-${note.firestoreId || note.id}`} key={note.id || idx} className={`flex flex-col ${note.author === currentUser.name ? 'items-end' : 'items-start'} mb-6 animate-in fade-in slide-in-from-bottom-1 duration-300 group`}>
+                                        <div className={`flex gap-3 max-w-[85%] ${note.author === currentUser.name ? 'flex-row-reverse' : 'flex-row'}`}>
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 shadow-sm mt-auto ${note.author === currentUser.name ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600'}`}>
+                                                {note.author[0]}
                                             </div>
-                                        </div>
-                                        <div className="mt-1.5 flex items-center gap-3 px-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                                            <span className={`text-[9px] font-black uppercase tracking-widest ${note.author === currentUser.name ? 'text-blue-500' : 'text-gray-400'}`}>
-                                                {note.author}
-                                            </span>
-                                            <span className="text-[9px] text-gray-300">•</span>
-                                            {note.expiresAt ? <TimeLeft timestamp={note.timestamp} expiresAt={note.expiresAt} /> : <TimeLeft timestamp={note.timestamp} />}
-                                            {note.author === currentUser.name && (
-                                                <span className="text-[9px] text-gray-400 ml-1">
-                                                    {note.status === 'read' ? '✓✓' : note.status === 'delivered' ? '✓' : '✓'}
-                                                </span>
-                                            )}
-                                            <>
-                                                <span className="text-[9px] text-gray-300">•</span>
 
-                                                <button
-                                                    onClick={() => onNavigateContext && onNavigateContext(note.contextId)}
-                                                    className={`text-[8px] font-bold px-2 py-0.5 rounded-full uppercase tracking-widest border transition cursor-pointer ${(note as any).termCategory ?
-                                                        // Simple hash or lookup for category colors
-                                                        ['Physical Touch', 'Sex', 'Intimacy'].includes((note as any).termCategory) ? 'bg-pink-50 text-pink-500 border-pink-100 hover:bg-pink-100' :
-                                                            ['Service', 'Gifts'].includes((note as any).termCategory) ? 'bg-orange-50 text-orange-500 border-orange-100 hover:bg-orange-100' :
-                                                                ['Words', 'Time'].includes((note as any).termCategory) ? 'bg-blue-50 text-blue-500 border-blue-100 hover:bg-blue-100' :
-                                                                    'bg-purple-50 text-purple-500 border-purple-100 hover:bg-purple-100'
-                                                        : 'bg-gray-50 text-gray-500 border-gray-100 hover:bg-gray-100'
-                                                        }`}
-                                                    title="View Context"
-                                                >
-                                                    {note.contextName} 🔗
-                                                </button>
-                                            </>
+                                            {/* Message Content Bubble */}
+                                            <MessageBubble
+                                                note={note}
+                                                currentUser={currentUser}
+                                                partner={partner}
+                                                sharedKey={sharedKey}
+                                                onToggleReaction={onToggleReaction}
+                                                onMarkRead={onMarkRead}
+                                                onDeleteNote={onDeleteNote}
+                                            />
                                         </div>
                                     </div>
                                 ))
@@ -839,338 +832,154 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
                             </p>
                         </div>
                     </div>
-
-                    {/* Composer Column */}
-                    <div className="lg:col-span-7 space-y-6">
-                        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 sm:p-8">
-                            <h2 className="text-xl font-serif font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                <span>✨</span> AI Flirt Drafting
-                            </h2>
-                            <div className="flex gap-2 mb-6">
-                                {(['sweet', 'thoughtful', 'spicy'] as const).map(tone => (
-                                    <button key={tone} onClick={() => setAiTone(tone)} className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition ${aiTone === tone ? 'bg-indigo-600 text-white shadow-lg' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}`}>
-                                        {tone}
-                                    </button>
-                                ))}
-                            </div>
-                            <button onClick={generateAIDraft} disabled={isDrafting} className="w-full bg-indigo-50 text-indigo-600 font-bold py-3 rounded-2xl hover:bg-indigo-100 transition border border-indigo-100 flex items-center justify-center gap-2 disabled:opacity-50 mb-6 font-serif">
-                                {isDrafting ? <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div> : '🪄 Help me say something...'}
-                            </button>
-                            {/* Emoji Guide Modal */}
-                            {showEmojiGuide && (
-                                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowEmojiGuide(false)}>
-                                    <div className="bg-white p-6 rounded-2xl max-w-lg w-full shadow-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-                                        <div className="flex justify-between items-center mb-4">
-                                            <h3 className="font-bold text-lg flex items-center gap-2"><span className="text-2xl">🍆</span> Emoji Meanings</h3>
-                                            <button onClick={() => setShowEmojiGuide(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-                                        </div>
-                                        <div className="space-y-4">
-                                            <div>
-                                                <h4 className="font-bold text-xs uppercase tracking-widest text-gray-500 mb-2">Single Emojis</h4>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    {EMOJI_PATTERNS.filter(p => p.category === 'Single').map((p, i) => (
-                                                        <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                                                            <span className="text-2xl">{p.char}</span>
-                                                            <span className="text-xs text-gray-600 leading-tight">{p.meaning}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <h4 className="font-bold text-xs uppercase tracking-widest text-gray-500 mb-2">Combos</h4>
-                                                <div className="grid grid-cols-1 gap-2">
-                                                    {EMOJI_PATTERNS.filter(p => p.category === 'Combo').map((p, i) => (
-                                                        <div key={i} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
-                                                            <span className="text-2xl min-w-[60px] text-center">{p.char}</span>
-                                                            <span className="text-xs text-gray-600">{p.meaning}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            <form onSubmit={handleSendFlirt} className="space-y-4">
-                                <div className="flex gap-2 mb-2">
-                                    <select
-                                        value={expiration}
-                                        onChange={(e) => setExpiration(Number(e.target.value))}
-                                        className="bg-gray-50 text-xs font-bold text-gray-600 py-2 px-3 rounded-xl border-none outline-none focus:ring-2 focus:ring-blue-100"
-                                    >
-                                        <option value={30 * 60 * 1000}>⚡ Quick (30m)</option>
-                                        <option value={2 * 60 * 60 * 1000}>🕑 Standard (2h)</option>
-                                        <option value={24 * 60 * 60 * 1000}>🌞 Day (24h)</option>
-                                        <option value={48 * 60 * 60 * 1000}>🗓️ Long (48h)</option>
-                                    </select>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowEmojiGuide(true)}
-                                        className="bg-pink-50 text-pink-500 text-xs font-bold py-2 px-3 rounded-xl hover:bg-pink-100 transition flex items-center gap-1"
-                                    >
-                                        <span>🍆</span> Guide
-                                    </button>
-                                </div>
-
-                                <div className="relative">
-                                    <textarea
-                                        value={draft}
-                                        onChange={e => setDraft(e.target.value)}
-                                        placeholder="Type it yourself, use the magic wand above, or a combination of the two..."
-                                        rows={3}
-                                        className="w-full bg-gray-50 p-4 rounded-2xl border border-transparent focus:border-blue-500 focus:bg-white outline-none transition text-sm"
-                                    />
-                                    {stagedImage && (
-                                        <div className="absolute bottom-12 left-3 z-10 animate-in slide-in-from-bottom-2 duration-300">
-                                            <div className="relative group">
-                                                <img
-                                                    src={URL.createObjectURL(stagedImage)}
-                                                    alt="Draft"
-                                                    className="w-16 h-16 rounded-xl object-cover shadow-md border-2 border-white"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setStagedImage(null)}
-                                                    className="absolute -top-2 -right-2 bg-red-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shadow-sm"
-                                                    title="Remove Image"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                    {audioBlob && (
-                                        <div className="absolute bottom-3 right-3 flex items-center gap-2 bg-blue-100 text-blue-700 px-3 py-1.5 rounded-full text-xs font-bold animate-in zoom-in duration-200">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    try {
-                                                        console.log("Attempting to play draft...", audioBlob.type, audioBlob.size);
-                                                        const url = URL.createObjectURL(audioBlob);
-                                                        const audio = new Audio(url);
-                                                        audio.onended = () => {
-                                                            console.log("Playback ended");
-                                                            URL.revokeObjectURL(url);
-                                                        };
-                                                        audio.onerror = (e) => {
-                                                            console.error("Audio Error:", e);
-                                                            alert("Error playing audio: " + (audio.error?.message || "Unknown error"));
-                                                        };
-                                                        const playPromise = audio.play();
-                                                        if (playPromise !== undefined) {
-                                                            playPromise.catch(error => {
-                                                                console.error("Play failed:", error);
-                                                                alert("Playback failed: " + error.message);
-                                                            });
-                                                        }
-                                                    } catch (e: any) {
-                                                        console.error("Setup error:", e);
-                                                        alert("Playback setup failed: " + e.message);
-                                                    }
-                                                }}
-                                                className="hover:text-blue-900 transition"
-                                                title="Play Draft"
-                                            >
-                                                ▶️
-                                            </button>
-                                            <span>Voice Draft</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => setAudioBlob(null)}
-                                                className="w-4 h-4 bg-blue-200 hover:bg-blue-300 rounded-full flex items-center justify-center text-[10px]"
-                                                title="Discard"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="flex gap-2 items-center">
-                                    <AudioRecorder onStop={(blob) => setAudioBlob(blob)} />
-
-                                    <button type="button" onClick={() => cameraInputRef.current?.click()} disabled={uploadStatus !== 'idle'} className="p-4 bg-gray-50 text-gray-400 rounded-2xl hover:bg-gray-100 transition disabled:opacity-50" title="Take Photo">
-                                        <span className="text-lg">{uploadStatus !== 'idle' ? '⏳' : '📸'}</span>
-                                    </button>
-                                    <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadStatus !== 'idle'} className="p-4 bg-gray-50 text-gray-400 rounded-2xl hover:bg-gray-100 transition disabled:opacity-50" title="Upload Image">
-                                        <span className="text-lg">{uploadStatus !== 'idle' ? '...' : '🖼️'}</span>
-                                    </button>
-                                    <button type="submit" disabled={(!draft.trim() && !audioBlob) || uploadStatus !== 'idle'} className="flex-grow bg-blue-600 text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-xl shadow-blue-100 hover:bg-blue-700 transition disabled:opacity-50">
-                                        {uploadStatus === 'idle' ? 'Send Flirt' :
-                                            uploadStatus === 'uploading' ? `Uploading ${uploadProgress}%` :
-                                                `${uploadStatus.charAt(0).toUpperCase() + uploadStatus.slice(1)}...`}
-                                    </button>
-                                </div>
-                                <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" className="hidden" />
-                                <input type="file" ref={cameraInputRef} onChange={handlePhotoUpload} accept="image/*" capture="environment" className="hidden" />
-                            </form>
-                            <div className="mt-6 pt-6 border-t border-gray-100 text-xs text-gray-400">
-                                <p className="flex items-center gap-2 mb-1 font-bold text-gray-500">
-                                    <span className="text-lg">🔒</span> Privacy & Encryption
-                                </p>
-                                <p className="opacity-80 leading-relaxed">
-                                    Photos are <strong>End-to-End Encrypted</strong> using your partner's specific digital key.
-                                    Once sent, even you cannot view them (Blind Drop mode). Only your partner's device can unlock the image.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[650px]">
-                    {/* Thread List Sidebar */}
-                    <div className="lg:col-span-4 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
-                        <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
-                            <h3 className="font-bold text-gray-800">Message Threads</h3>
-                            <button onClick={() => setIsComposing(true)} className="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold shadow-lg shadow-indigo-100 hover:scale-110 transition">+</button>
-                        </div>
-                        <div className="flex-grow overflow-y-auto p-4 space-y-3">
-                            {sortedThreadIds.length === 0 ? (
-                                <div className="py-10 text-center text-gray-400 italic text-sm">No threads yet. Click + to start one.</div>
-                            ) : (
-                                sortedThreadIds.map(tid => {
-                                    const thread = threads[tid];
-                                    return (
-                                        <button
-                                            key={tid}
-                                            onClick={() => { setActiveThreadId(tid); setIsComposing(false); }}
-                                            className={`w-full text-left p-4 rounded-2xl transition border ${activeThreadId === tid ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-transparent hover:bg-gray-50'}`}
-                                        >
-                                            <p className="font-bold text-gray-800 text-sm mb-1 truncate">{thread.subject}</p>
-                                            <p className="text-[10px] text-gray-500 truncate mb-2">{thread.lastNote.author}: {thread.lastNote.text}</p>
-                                            <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{new Date(thread.lastNote.timestamp).toLocaleDateString()} {new Date(thread.lastNote.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-                                        </button>
-                                    );
-                                })
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Thread Detail / Composition Area */}
-                    <div className="lg:col-span-8 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden relative">
-                        {isComposing ? (
-                            <div className="p-8 h-full flex flex-col">
-                                <header className="mb-8 flex justify-between items-center">
-                                    <h2 className="text-2xl font-serif font-bold text-gray-800">New Message</h2>
-                                    <button onClick={() => setIsComposing(false)} className="text-gray-400 hover:text-gray-600">Cancel</button>
-                                </header>
-                                <form onSubmit={handleStartThread} className="flex-grow flex flex-col gap-4">
-                                    <input
-                                        value={compSubject}
-                                        onChange={e => setCompSubject(e.target.value)}
-                                        placeholder="Subject"
-                                        className="w-full bg-gray-50 p-4 rounded-2xl border-none focus:ring-2 focus:ring-indigo-100 outline-none font-bold"
-                                    />
-                                    <textarea
-                                        value={compText}
-                                        onChange={e => setCompText(e.target.value)}
-                                        placeholder="Write your long-form message here..."
-                                        className="flex-grow w-full bg-gray-50 p-4 rounded-2xl border-none focus:ring-2 focus:ring-indigo-100 outline-none text-sm resize-none"
-                                    />
-                                    <button type="submit" className="w-full bg-indigo-600 text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition">Send Thread</button>
-                                </form>
-                            </div>
-                        ) : activeThreadId && threads[activeThreadId] ? (
-                            <>
-                                <header className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                                    <div>
-                                        <h2 className="font-black uppercase tracking-tighter text-gray-800">{threads[activeThreadId].subject}</h2>
-                                        <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Threaded Conversation</p>
-                                    </div>
-                                    <button onClick={() => setActiveThreadId(null)} className="sm:hidden text-indigo-600 font-bold">Back</button>
-                                </header>
-                                <div ref={scrollRef} className="flex-grow overflow-y-auto p-6 space-y-6 bg-[#f9f9fb] scroll-smooth">
-                                    {threads[activeThreadId].notes.map((note, idx) => (
-                                        <div key={idx} className={`flex flex-col ${note.author === currentUser.name ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300 group`}>
-                                            <div className="flex items-center gap-2 max-w-[85%] justify-end">
-                                                {note.author === currentUser.name && (
-                                                    <div className="flex bg-gray-50 rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); onPinInsight(note.text, "Flirt Thread"); }}
-                                                            className="text-yellow-400 hover:text-yellow-600 px-2 text-sm"
-                                                            title="Pin to Insights"
-                                                        >
-                                                            📌
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); onDeleteNote(note.id); }}
-                                                            className="text-red-300 hover:text-red-500 px-2 text-sm"
-                                                            title="Delete"
-                                                        >
-                                                            🗑️
-                                                        </button>
-                                                    </div>
-                                                )}
-                                                <div className={`p-4 rounded-3xl text-sm shadow-sm ${note.author === currentUser.name ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'}`}>
-                                                    {(note.photoPath && note.photoIv) || (note.storagePath && note.encryptedKey) ? (
-                                                        <SecurePhoto
-                                                            path={note.photoPath}
-                                                            storagePath={note.storagePath}
-                                                            ivStr={note.photoIv}
-                                                            encryptedKey={note.encryptedKey}
-                                                            sharedKey={sharedKey}
-                                                            timestamp={note.timestamp}
-                                                            isMine={note.author === currentUser.name}
-                                                        />
-                                                    ) : (
-                                                        <p className="leading-relaxed whitespace-pre-wrap">{note.text}</p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="mt-2 flex gap-2 px-1 items-center">
-                                                <span className="text-[9px] font-black text-indigo-500 uppercase tracking-widest">{note.author}</span>
-                                                <span className="text-[9px] text-gray-400 capitalize">{new Date(note.timestamp).toLocaleDateString()} at {new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                {note.author === currentUser.name && (
-                                                    <span className="text-[10px]" title={note.status === 'read' ? "Read" : "Sent"}>
-                                                        {note.status === 'read' ? '✅' : '✓'}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="p-5 border-t border-gray-100">
-                                    <form onSubmit={handleSendThreadReply} className="flex gap-3 items-center">
-                                        <textarea
-                                            value={draft}
-                                            onChange={e => setDraft(e.target.value)}
-                                            placeholder="Reply to this thread..."
-                                            rows={2}
-                                            className="flex-grow bg-gray-50 p-4 rounded-2xl border-none focus:ring-2 focus:ring-indigo-100 outline-none text-sm resize-none"
-                                        />
-                                        <div className="flex flex-col gap-2">
-                                            <button type="button" onClick={() => cameraInputRef.current?.click()} disabled={uploadStatus !== 'idle'} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 transition disabled:opacity-50" title="Take Photo">
-                                                {uploadStatus !== 'idle' ? '⏳' : '📸'}
-                                            </button>
-                                            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadStatus !== 'idle'} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 transition disabled:opacity-50" title="Upload Image">
-                                                {uploadStatus !== 'idle' ? '...' : '🖼️'}
-                                            </button>
-                                            <button type="submit" disabled={!draft.trim() || uploadStatus !== 'idle'} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition disabled:opacity-50">
-                                                {uploadStatus === 'idle' ? '🚀' : '...'}
-                                            </button>
-                                        </div>
-                                        <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" className="hidden" />
-                                        <input type="file" ref={cameraInputRef} onChange={handlePhotoUpload} accept="image/*" capture="environment" className="hidden" />
-                                    </form>
-                                </div>
-                            </>
-                        ) : activeThreadId ? (
-                            <div className="h-full flex flex-col justify-center items-center text-gray-400 opacity-50 space-y-4">
-                                <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                                <p className="text-sm font-bold">Creating Thread...</p>
-                            </div>
-                        ) : (
-                            <div className="h-full flex flex-col justify-center items-center text-gray-400 opacity-50 p-10 text-center">
-                                <div className="text-6xl mb-4">📥</div>
-                                <h3 className="text-xl font-serif font-bold text-gray-600 mb-2">Message Center</h3>
-                                <p className="text-sm max-w-xs">Select a thread on the left or click the "+" button to start a new subject-based conversation.</p>
-                            </div>
-                        )}
-                    </div>
                 </div>
             )}
-        </div>
+
+            {/* Inbox View */}
+            {
+                subTab === 'inbox' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 h-[650px]">
+                        {/* Thread List Sidebar */}
+                        <div className="lg:col-span-4 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
+                            <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50/30">
+                                <h3 className="font-bold text-gray-800">Message Threads</h3>
+                                <button onClick={() => setIsComposing(true)} className="w-8 h-8 bg-indigo-600 text-white rounded-full flex items-center justify-center font-bold shadow-lg shadow-indigo-100 hover:scale-110 transition">+</button>
+                            </div>
+                            <div className="flex-grow overflow-y-auto p-4 space-y-3">
+                                {sortedThreadIds.length === 0 ? (
+                                    <div className="py-10 text-center text-gray-400 italic text-sm">No threads yet. Click + to start one.</div>
+                                ) : (
+                                    sortedThreadIds.map(tid => {
+                                        const thread = threads[tid];
+                                        return (
+                                            <button
+                                                key={tid}
+                                                onClick={() => { setActiveThreadId(tid); setIsComposing(false); }}
+                                                className={`w-full text-left p-4 rounded-2xl transition border ${activeThreadId === tid ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-transparent hover:bg-gray-50'}`}
+                                            >
+                                                <p className="font-bold text-gray-800 text-sm mb-1 truncate">{thread.subject}</p>
+                                                <p className="text-[10px] text-gray-500 truncate mb-2">{thread.lastNote.author}: {thread.lastNote.text}</p>
+                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">{new Date(thread.lastNote.timestamp).toLocaleDateString()} {new Date(thread.lastNote.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                                            </button>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Thread Detail / Composition Area */}
+                        <div className="lg:col-span-8 bg-white rounded-3xl shadow-sm border border-gray-100 flex flex-col overflow-hidden relative">
+                            {isComposing ? (
+                                <div className="p-8 h-full flex flex-col">
+                                    <header className="mb-8 flex justify-between items-center">
+                                        <h2 className="text-2xl font-serif font-bold text-gray-800">New Message</h2>
+                                        <button onClick={() => setIsComposing(false)} className="text-gray-400 hover:text-gray-600">Cancel</button>
+                                    </header>
+                                    <form onSubmit={handleStartThread} className="flex-grow flex flex-col gap-4">
+                                        <input
+                                            value={compSubject}
+                                            onChange={e => setCompSubject(e.target.value)}
+                                            placeholder="Subject"
+                                            className="w-full bg-gray-50 p-4 rounded-2xl border-none focus:ring-2 focus:ring-indigo-100 outline-none font-bold"
+                                        />
+                                        <textarea
+                                            value={compText}
+                                            onChange={e => setCompText(e.target.value)}
+                                            placeholder="Write your long-form message here..."
+                                            className="flex-grow w-full bg-gray-50 p-4 rounded-2xl border-none focus:ring-2 focus:ring-indigo-100 outline-none text-sm resize-none"
+                                        />
+                                        <button type="submit" className="w-full bg-indigo-600 text-white font-black uppercase tracking-widest py-4 rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition">Send Thread</button>
+                                    </form>
+                                </div>
+                            ) : activeThreadId && threads[activeThreadId] ? (
+                                <>
+                                    <header className="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                                        <div>
+                                            <h2 className="font-black uppercase tracking-tighter text-gray-800">{threads[activeThreadId].subject}</h2>
+                                            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Threaded Conversation</p>
+                                        </div>
+                                        <button onClick={() => setActiveThreadId(null)} className="sm:hidden text-indigo-600 font-bold">Back</button>
+                                    </header>
+                                    <div ref={scrollRef} className="flex-grow overflow-y-auto p-6 space-y-6 bg-[#f9f9fb] scroll-smooth">
+                                        {threads[activeThreadId].notes.map((note, idx) => (
+                                            <div id={`note-${note.firestoreId || note.id}`} key={idx} className={`flex flex-col ${note.author === currentUser.name ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300 group`}>
+                                                <div className="flex items-center gap-2 max-w-[85%] justify-end">
+                                                    {note.author === currentUser.name && (
+                                                        <div className="flex bg-gray-50 rounded-lg p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); onPinInsight(note.text, "Flirt Thread"); }}
+                                                                className="text-yellow-400 hover:text-yellow-600 px-2 text-sm"
+                                                                title="Pin to Insights"
+                                                            >
+                                                                📌
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => { e.stopPropagation(); onDeleteNote(note.id); }}
+                                                                className="text-red-300 hover:text-red-500 px-2 text-sm"
+                                                                title="Delete"
+                                                            >
+                                                                🗑️
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    {/* Content */}
+                                                    <MessageBubble
+                                                        note={note}
+                                                        currentUser={currentUser}
+                                                        partner={partner}
+                                                        sharedKey={sharedKey}
+                                                        onToggleReaction={onToggleReaction}
+                                                        onMarkRead={onMarkRead}
+                                                        onDeleteNote={onDeleteNote}
+                                                    />
+                                                </div>
+
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="p-5 border-t border-gray-100">
+                                        <form onSubmit={handleSendThreadReply} className="flex gap-3 items-center">
+                                            <textarea
+                                                value={draft}
+                                                onChange={e => setDraft(e.target.value)}
+                                                placeholder="Reply to this thread..."
+                                                rows={2}
+                                                className="flex-grow bg-gray-50 p-4 rounded-2xl border-none focus:ring-2 focus:ring-indigo-100 outline-none text-sm resize-none"
+                                            />
+                                            <div className="flex flex-col gap-2">
+                                                <button type="button" onClick={() => cameraInputRef.current?.click()} disabled={uploadStatus !== 'idle'} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 transition disabled:opacity-50" title="Take Photo">
+                                                    {uploadStatus !== 'idle' ? '⏳' : '📸'}
+                                                </button>
+                                                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadStatus !== 'idle'} className="p-3 bg-gray-50 text-gray-400 rounded-xl hover:bg-gray-100 transition disabled:opacity-50" title="Upload Image">
+                                                    {uploadStatus !== 'idle' ? '...' : '🖼️'}
+                                                </button>
+                                                <button type="submit" disabled={!draft.trim() || uploadStatus !== 'idle'} className="p-3 bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition disabled:opacity-50">
+                                                    {uploadStatus === 'idle' ? '🚀' : '...'}
+                                                </button>
+                                            </div>
+                                            <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} accept="image/*" className="hidden" />
+                                            <input type="file" ref={cameraInputRef} onChange={handlePhotoUpload} accept="image/*" capture="environment" className="hidden" />
+                                        </form>
+                                    </div>
+                                </>
+                            ) : activeThreadId ? (
+                                <div className="h-full flex flex-col justify-center items-center text-gray-400 opacity-50 space-y-4">
+                                    <div className="w-8 h-8 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                                    <p className="text-sm font-bold">Creating Thread...</p>
+                                </div>
+                            ) : (
+                                <div className="h-full flex flex-col justify-center items-center text-gray-400 opacity-50 p-10 text-center">
+                                    <div className="text-6xl mb-4">📥</div>
+                                    <h3 className="text-xl font-serif font-bold text-gray-600 mb-2">Message Center</h3>
+                                    <p className="text-sm max-w-xs">Select a thread on the left or click the "+" button to start a new subject-based conversation.</p>
+                                </div>
+                            )
+                            }
+                        </div >
+                    </div >
+                )
+            }
+        </div >
     );
 };
 

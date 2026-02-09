@@ -57,3 +57,27 @@ export const demoChatter: ChatterNote[] = [
         timestamp: Date.now() - 7500000
     }
 ];
+
+export const demoUser = {
+    uid: 'demo-user-id',
+    name: 'John Doe 1234',
+    email: 'john@demo.com',
+    photoURL: null,
+    isVerifiedAdult: true,
+    connectId: 'DEMO12',
+    partnerId: 'demo-partner-id',
+    partnerName: 'Jane Doe 1234',
+    createdAt: Date.now()
+};
+
+export const demoPartner = {
+    uid: 'demo-partner-id',
+    name: 'Jane Doe 1234',
+    email: 'jane@demo.com',
+    photoURL: null,
+    isVerifiedAdult: true,
+    connectId: 'DEMO34',
+    partnerId: 'demo-user-id',
+    partnerName: 'John Doe 1234',
+    createdAt: Date.now()
+};

@@ -11,7 +11,10 @@ interface DashboardProps {
     partnerBookmarks: Record<number, Bookmark>;
     onNavigate: (tab: string) => void;
     onTagClick?: (tag: string) => void;
+    onNavigateContext?: (contextId: string, targetId?: string) => void;
 }
+
+import { generateActivityFeed } from '../utils/activity';
 
 const Dashboard: React.FC<DashboardProps> = ({
     currentUser,
@@ -21,8 +24,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     bookmarks,
     partnerBookmarks = {},
     onNavigate,
-    onTagClick
+    onTagClick,
+    onNavigateContext
 }) => {
+
+    const recentActivity = useMemo(() => {
+        const feed = generateActivityFeed(chatter, currentUser, partner);
+        return feed.slice(0, 3);
+    }, [chatter, currentUser, partner]);
 
     // --- Stats Logic ---
     const newFlirtsCount = useMemo(() => {
@@ -68,7 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     const activeTasks = bounties.filter(b => b.status === 'claimed').length;
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500 w-full md:w-1/2 mx-auto">
+        <div className="space-y-8 animate-in fade-in duration-500 w-full mx-auto">
 
             {/* Stats Grid - 4 Box Layout */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -90,14 +99,82 @@ const Dashboard: React.FC<DashboardProps> = ({
                 ))}
             </div>
 
+            {/* Recent Activity Module */}
+            <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 relative overflow-hidden">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="font-serif text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <span>🔔</span> Recent Activity
+                    </h2>
+                    <button
+                        onClick={() => onNavigate('flirts')}
+                        className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition uppercase tracking-widest border border-indigo-100"
+                    >
+                        View All
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    {recentActivity.length === 0 ? (
+                        <p className="text-sm text-gray-400 italic text-center py-4">No recent activity.</p>
+                    ) : (
+                        recentActivity.map((item, i) => (
+                            <div
+                                key={item.id || i}
+                                onClick={() => onNavigateContext?.(item.contextId, item.firestoreId || item.id)}
+                                className="flex items-start gap-3 p-3 rounded-2xl bg-gray-50 border border-gray-100 hover:bg-white hover:shadow-md transition cursor-pointer group"
+                            >
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shrink-0 ${item.type === 'reaction' ? 'bg-red-100 text-red-500' : (item.contextId === 'general-flirt' ? 'bg-pink-100 text-pink-500' : 'bg-blue-100 text-blue-500')}`}>
+                                    {item.type === 'reaction' ? '❤️' : (item.contextId === 'general-flirt' ? '💌' : '💬')}
+                                </div>
+                                <div className="flex-grow min-w-0">
+                                    <div className="flex justify-between items-start">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide truncate pr-2">
+                                            {item.contextName}
+                                        </p>
+                                        <span className="text-[9px] text-gray-300 whitespace-nowrap">
+                                            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-700 font-medium truncate group-hover:text-indigo-600 transition-colors">
+                                        <span className="font-bold text-gray-900">{item.author}:</span> {item.text}
+                                    </p>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
             {/* Dynamic Alignment Section */}
             {
                 partner && (
                     <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-gray-100 relative overflow-hidden">
-                        <div className="text-center mb-8">
+                        <div className="text-center mb-8 relative">
                             <div className="inline-flex items-center gap-2 mb-2">
                                 <span className="text-2xl">💞</span>
                                 <h2 className="font-serif text-2xl font-bold text-gray-800">Your Dynamic Alignment</h2>
+                                <div className="relative group ml-2 inline-block">
+                                    <button className="w-6 h-6 rounded-full bg-gray-100 text-gray-400 font-bold hover:bg-gray-200 hover:text-gray-600 transition flex items-center justify-center text-xs">
+                                        ?
+                                    </button>
+                                    <div className="absolute left-1/2 -translate-x-1/2 top-8 w-64 bg-white p-4 rounded-xl shadow-xl border border-gray-100 opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto group-active:pointer-events-auto z-20 text-left">
+                                        <h4 className="font-bold text-gray-800 mb-2 text-[10px] uppercase tracking-wider">How to Read This</h4>
+                                        <div className="space-y-2 text-xs">
+                                            <div>
+                                                <span className="font-bold text-pink-600">🔥 Shared Loves</span>
+                                                <p className="text-gray-500 mt-0.5">Things you <strong>BOTH</strong> marked as "Love".</p>
+                                            </div>
+                                            <div>
+                                                <span className="font-bold text-blue-600">🧩 Complementary</span>
+                                                <p className="text-gray-500 mt-0.5">"Love" + "Like". One leads, one follows.</p>
+                                            </div>
+                                            <div>
+                                                <span className="font-bold text-purple-600">🌱 Growth Areas</span>
+                                                <p className="text-gray-500 mt-0.5">"Love" + "Unsure". Explore gently.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Snapshot of your connection</p>
                             <div className="mt-4 flex justify-center md:absolute md:top-8 md:right-8 md:mt-0">
@@ -186,6 +263,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                 </div>
             </div>
+
+
 
             {/* Action Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

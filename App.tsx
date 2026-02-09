@@ -13,12 +13,15 @@ import UserSetup from './components/UserSetup';
 
 import { termsData } from './constants';
 import Account from './components/Account';
-import { auth, db } from './firebase';
+import { auth, db, messaging } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, onSnapshot, setDoc, updateDoc, collection, addDoc, query, where, getDocs, deleteDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, addDoc, updateDoc, doc, setDoc, deleteDoc, getDocs, getDoc, arrayUnion } from 'firebase/firestore';
+import { getToken, onMessage } from 'firebase/messaging';
 import FlirtSection from './components/FlirtSection';
 import ReflectionJournal from './components/ReflectionJournal';
 import { generateKeyOld as generateKey, exportKeyOld as exportKey, importKeyOld as importKey } from './utils/encryption';
+import ReloadPrompt from './components/ReloadPrompt';
+import { demoUser, demoPartner, demoBounties, demoChatter } from './utils/demoData';
 
 type Tab = 'dashboard' | 'directory' | 'chemistry' | 'giving' | 'session' | 'favors' | 'flirts' | 'account' | 'journal';
 
@@ -26,6 +29,7 @@ type Tab = 'dashboard' | 'directory' | 'chemistry' | 'giving' | 'session' | 'fav
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [pendingSearchTerm, setPendingSearchTerm] = useState<string | null>(null);
 
@@ -35,8 +39,8 @@ const App: React.FC = () => {
   };
 
   const handleNavigateContext = (contextId: string) => {
-    if (contextId === 'general-flirt') {
-      setActiveTab('favors');
+    if (contextId === 'general-flirt' || contextId.startsWith('flirt-')) {
+      setActiveTab('flirts');
     } else if (contextId.startsWith('bounty-')) {
       const id = parseInt(contextId.split('-')[1]);
       setHighlightedBountyId(id);
@@ -67,6 +71,8 @@ const App: React.FC = () => {
 
   // Global Data Store
   const [bounties, setBounties] = useState<Bounty[]>([]);
+  const [myBountiesState, setMyBountiesState] = useState<Bounty[]>([]);
+  const [partnerBountiesState, setPartnerBountiesState] = useState<Bounty[]>([]);
   const [myChatter, setMyChatter] = useState<ChatterNote[]>([]);
   const [partnerChatter, setPartnerChatter] = useState<ChatterNote[]>([]);
   const [chatter, setChatter] = useState<Record<string, ChatterNote[]>>({});
@@ -193,6 +199,55 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Notifications
+  useEffect(() => {
+    if (isDemoMode || !currentUser) return;
+
+    const setupNotifications = async () => {
+      try {
+        const msg = await messaging();
+        if (!msg) {
+          console.log("Messaging not supported or failed to initialize.");
+          return;
+        }
+
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          // NOTE: VAPID Key is required for web push.
+          // You can get it from Firebase Console -> Project Settings -> Cloud Messaging -> Web Configuration
+          const VAPID_KEY = "YOUR_VAPID_KEY_HERE"; // TODO: Replace with actual key
+
+          if (VAPID_KEY === "YOUR_VAPID_KEY_HERE") {
+            console.warn("Push Notifications: VAPID Key missing. Update App.tsx with key from Firebase Console.");
+          } else {
+            const token = await getToken(msg, { vapidKey: VAPID_KEY });
+            if (token) {
+              // Save token to user profile
+              await updateDoc(doc(db, 'users', currentUser.uid), { fcmToken: token });
+            }
+          }
+
+          onMessage(msg, (payload) => {
+            console.log("Foreground Message:", payload);
+            // Create a simple browser notification if allowed and visible? 
+            // Or just rely on OS notification if background.
+            // In foreground, Firebase doesn't show OS notification by default.
+            if (payload.notification) {
+              new Notification(payload.notification.title || "New Message", {
+                body: payload.notification.body,
+                icon: '/logo.png'
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Notification setup error:", e);
+      }
+    };
+
+    setupNotifications();
+  }, [currentUser, isDemoMode]);
+
   // Data Sync (Users + Partner)
   useEffect(() => {
     if (!currentUser || !auth.currentUser) return;
@@ -203,7 +258,7 @@ const App: React.FC = () => {
     // 1. My Data Listeners
     const unsubMyBounties = onSnapshot(collection(db, 'users', myUid, 'bounties'), (snap) => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-      setBounties(prev => [...prev.filter(b => b.postedBy !== myName), ...data]);
+      setMyBountiesState(data);
     });
 
     const unsubMyBookmarks = onSnapshot(collection(db, 'users', myUid, 'bookmarks'), (snap) => {
@@ -216,8 +271,20 @@ const App: React.FC = () => {
     });
 
     // CHANGE: Set myChatter directly from snapshot (handles deletions/updates automatically)
+    // Helper to normalize reactions
+    const normalizeReactions = (data: any) => {
+      if (Array.isArray(data.reactions)) return data.reactions;
+      if (data.reactions && typeof data.reactions === 'object') {
+        return Object.entries(data.reactions).map(([author, emoji]) => ({ author, emoji }));
+      }
+      return [];
+    };
+
     const unsubMyChatter = onSnapshot(collection(db, 'users', myUid, 'chatter'), (snap) => {
-      const notes = snap.docs.map(d => d.data() as ChatterNote);
+      const notes = snap.docs.map(d => {
+        const data = d.data();
+        return { ...data, reactions: normalizeReactions(data), firestoreId: d.id } as ChatterNote;
+      });
       setMyChatter(notes);
     });
 
@@ -228,8 +295,8 @@ const App: React.FC = () => {
 
     // 2. Partner Data Listeners
     let unsubPartnerBounties = () => { };
-    let unsubPartnerChatter = () => { };
     let unsubPartnerBookmarks = () => { };
+    let unsubPartnerChatter = () => { };
 
     if (currentUser.partnerId) {
       const q = query(collection(db, 'users'), where('connectId', '==', currentUser.partnerId));
@@ -239,11 +306,11 @@ const App: React.FC = () => {
           const pData = snap.docs[0].data() as User;
           const pName = pData.name;
 
-          setPartner(pData);
+          setPartner({ ...pData, uid: pUid });
 
           unsubPartnerBounties = onSnapshot(collection(db, 'users', pUid, 'bounties'), (s) => {
             const data = s.docs.map(d => ({ id: d.id, ...d.data() } as any));
-            setBounties(prev => [...prev.filter(b => b.postedBy === myName), ...data]);
+            setPartnerBountiesState(data);
           });
 
           unsubPartnerBookmarks = onSnapshot(collection(db, 'users', pUid, 'bookmarks'), (s) => {
@@ -255,9 +322,11 @@ const App: React.FC = () => {
             setAllBookmarks(prev => ({ ...prev, [pName]: bm }));
           });
 
-          // CHANGE: Set partnerChatter directly
           unsubPartnerChatter = onSnapshot(collection(db, 'users', pUid, 'chatter'), (s) => {
-            const notes = s.docs.map(d => d.data() as ChatterNote);
+            const notes = s.docs.map(d => {
+              const data = d.data();
+              return { ...data, reactions: normalizeReactions(data), firestoreId: d.id } as ChatterNote;
+            });
             setPartnerChatter(notes);
           });
         }
@@ -301,7 +370,36 @@ const App: React.FC = () => {
     setChatter(combined);
   }, [myChatter, partnerChatter]);
 
+  // Combine Bounties States
+  useEffect(() => {
+    setBounties([...myBountiesState, ...partnerBountiesState]);
+  }, [myBountiesState, partnerBountiesState]);
+
   const handleIndividualSetup = async (name: string, isDemo: boolean = false, email: string = '', initialBookmarks?: Record<number, Bookmark>) => {
+    if (isDemo) {
+      setIsDemoMode(true);
+      setCurrentUser(demoUser);
+      setPartner(demoPartner);
+
+      // Initialize Demo Data with mock IDs if needed
+      const initializedBounties = demoBounties.map((b, i) => ({ ...b, id: 1000 + i } as Bounty));
+      setMyBountiesState(initializedBounties.filter(b => b.postedBy === demoUser.name));
+      setPartnerBountiesState(initializedBounties.filter(b => b.postedBy === demoPartner.name));
+
+      // Chatter
+      setMyChatter(demoChatter.filter(c => c.author === demoUser.name));
+      setPartnerChatter(demoChatter.filter(c => c.author === demoPartner.name));
+
+      // Bookmarks
+      setAllBookmarks({
+        [demoUser.name]: initialBookmarks || {},
+        [demoPartner.name]: { 7: 'love', 5: 'like', 100: 'work' } // Mock partner bookmarks including 'work'
+      });
+
+      setLoading(false);
+      return;
+    }
+
     if (!auth.currentUser) return;
     try {
       const myUid = auth.currentUser.uid;
@@ -325,19 +423,7 @@ const App: React.FC = () => {
         await Promise.all(promises);
       }
 
-      // 2. Demo Data Injection
-      if (isDemo) {
-        const { demoBounties, demoChatter } = await import('./utils/demoData');
-
-        // Add Bounties
-        const bountyPromises = demoBounties.map(b => addDoc(collection(db, 'users', myUid, 'bounties'), b));
-
-        // Add Chatter
-        const chatterPromises = demoChatter.map(c => addDoc(collection(db, 'users', myUid, 'chatter'), c));
-
-        await Promise.all([...bountyPromises, ...chatterPromises]);
-      }
-
+      // No demo data injection for real users
     } catch (e: any) {
       console.error("Error saving initial setup:", e);
     }
@@ -419,10 +505,32 @@ const App: React.FC = () => {
   };
 
   const addNote = async (contextId: string, text: string, photoPath?: string, photoIv?: string, subject?: string, extra?: { encryptedKey?: string, storagePath?: string, senderId?: string, expiresAt?: number, audioPath?: string, audioIv?: string }) => {
-    if (!currentUser || !auth.currentUser) return;
-    try {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      const id = Date.now().toString();
       const newNote: any = {
-        id: Date.now().toString(),
+        id,
+        contextId,
+        subject: subject || null,
+        author: currentUser.name,
+        text,
+        timestamp: Date.now(),
+        photoPath: photoPath || null,
+        status: 'sent',
+        reactions: [] // Initialize array
+      };
+      setMyChatter(prev => [...prev, newNote]);
+      return;
+    }
+
+    if (!auth.currentUser) return;
+    try {
+      const id = Date.now().toString();
+      // ... rest of firestore logic
+      // ...
+      const newNote: any = {
+        id,
         contextId,
         subject: subject || null,
         author: currentUser.name,
@@ -436,14 +544,12 @@ const App: React.FC = () => {
         expiresAt: extra?.expiresAt || null,
         status: 'sent',
         audioPath: extra?.audioPath || null,
-        audioIv: extra?.audioIv || null
+        audioIv: extra?.audioIv || null,
+        reactions: {}
       };
 
-      // Remove null keys if preferred, or just save as null. Null is valid in Firestore.
-      // Cleaning undefineds is critical.
       Object.keys(newNote).forEach(key => newNote[key] === undefined && delete newNote[key]);
-
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'chatter'), newNote);
+      await setDoc(doc(db, 'users', auth.currentUser.uid, 'chatter', id), newNote);
     } catch (e: any) {
       console.error("Error adding note:", e);
       throw e;
@@ -451,83 +557,88 @@ const App: React.FC = () => {
   };
 
   const deleteNote = async (id: string) => {
+    if (isDemoMode) {
+      setMyChatter(prev => prev.filter(n => n.id !== id));
+      return;
+    }
+
     if (!auth.currentUser) return;
     try {
-      // 1. Find the note to get its Firestore ID (if different) or assuming 'id' is the doc ID?
-      // Wait, app uses 'id' property in the object (Date.now()), but Firestore has its own auto-ID.
-      // We need to query for it if we don't store the doc ID.
-      // Let's assume we need to query by 'id' field.
       const q = query(collection(db, 'users', auth.currentUser.uid, 'chatter'), where('id', '==', id));
       const snapshot = await getDocs(q);
-
       const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
       await Promise.all(deletePromises);
-
-      // Local state update (optimistic or driven by onSnapshot? onSnapshot handles it, but optimistic is nice)
-      // Actually onSnapshot in useEffect will handle the removal from 'chatter' state if we are listening.
-      // We are listening! (useEffect at line 170 in original file likely)
       console.log("Deleted note:", id);
     } catch (e) {
       console.error("Error deleting note:", e);
     }
   };
 
-  const markNoteAsRead = async (noteId: string, authorUid: string) => {
-    if (!currentUser || !auth.currentUser) return;
-    try {
-      // If I am the author, I don't mark my own as read (logic check)
-      // Actually, we pass the authorUid of the NOTE. 
-      // If note is from Partner, we need to update it in PARTNER's DB (because that's where the source of truth for their message is?)
-      // Wait, the architecture seems to be: 
-      // - I read my own 'chatter' collection? 
-      // - Or do I read from Partner's 'chatter' collection?
-      // Line 234: setPartnerChatter(notes) from `users/{pUid}/chatter`.
-
-      // So if I read a note, I need to update the document in the PARTNER's collection so THEY see it's read?
-      // OR do I update my copy? 
-      // The app seems to sync everything.
-
-      // Let's assume we update the document wherever it lives.
-      // If it's in partnerChatter, it's in `users/{partnerUid}/chatter/{noteId}`.
-
-      // But wait, `markNoteAsRead` needs to know where the note is.
-      // If the note is in `partnerChatter`, it is in the partner's subcollection.
-      // I need to write to `users/{partnerUid}/chatter/{noteId}`.
-
-      const ref = doc(db, 'users', authorUid, 'chatter', noteId);
-      await updateDoc(ref, {
-        status: 'read',
-        readAt: Date.now()
-      });
-    } catch (e) {
-      console.error("Error marking read:", e);
-    }
-  };
 
   const handleBookmarkToggle = async (termId: number, type: Bookmark) => {
-    if (!currentUser || !auth.currentUser) return;
-    const docRef = doc(db, 'users', auth.currentUser.uid, 'bookmarks', termId.toString());
-    const currentMark = allBookmarks[currentUser.name]?.[termId];
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      setAllBookmarks(prev => {
+        const currentBookmarks = prev[currentUser.name] || {};
+        let newBookmarks = { ...currentBookmarks };
+
+        if (newBookmarks[termId] === type) {
+          // If already bookmarked with this type, remove it
+          delete newBookmarks[termId];
+        } else {
+          // Otherwise, add/update it
+          newBookmarks[termId] = type;
+        }
+
+        return {
+          ...prev,
+          [currentUser.name]: newBookmarks
+        };
+      });
+      return;
+    }
+
+    if (!auth.currentUser) return;
     try {
-      if (currentMark === type) await deleteDoc(docRef);
-      else await setDoc(docRef, { type });
+      const docRef = doc(db, 'users', auth.currentUser.uid, 'bookmarks', termId.toString());
+      const currentMark = allBookmarks[currentUser.name]?.[termId]; // Re-fetch or pass currentMark if needed
+      if (currentMark === type) {
+        await deleteDoc(docRef);
+      } else {
+        await setDoc(docRef, { type });
+      }
     } catch (e: any) {
       console.error("Error toggling bookmark:", e);
     }
   };
 
-  const handleAddBounty = async (bountyData: Omit<Bounty, 'id' | 'status' | 'postedBy' | 'claimedBy'>) => {
-    if (!currentUser || !auth.currentUser) return;
-    try {
-      const newBounty: Omit<Bounty, 'id'> = {
-        ...bountyData,
-        status: 'available',
+  const handleAddBounty = async (bounty: Omit<Bounty, 'id' | 'status' | 'postedBy' | 'claimedBy'>) => {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      const newBounty: Bounty = {
+        ...bounty,
+        id: Date.now(),
         postedBy: currentUser.name,
-        claimedBy: null
+        status: 'available',
+        claimedBy: null,
+        deadline: bounty.deadline || 'Open'
       };
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'bounties'), newBounty);
+      setMyBountiesState(prev => [...prev, newBounty]);
+      return;
+    }
+
+    if (!auth.currentUser) return;
+    try {
+      await addDoc(collection(db, 'users', auth.currentUser.uid, 'bounties'), {
+        ...bounty,
+        postedBy: currentUser.name,
+        status: 'available',
+        claimedBy: null
+      });
     } catch (e: any) {
-      console.error("Error adding favor:", e);
+      console.error("Error adding bounty:", e);
     }
   };
 
@@ -540,31 +651,129 @@ const App: React.FC = () => {
     }
   };
 
-  const handleClaimBounty = async (bountyId: number | string) => {
-    const bounty = bounties.find(b => b.id.toString() === bountyId.toString());
-    if (!bounty || !currentUser) return;
-    let targetUid = auth.currentUser!.uid;
-    if (bounty.postedBy !== currentUser.name && currentUser.partnerId) {
-      const q = query(collection(db, 'users'), where('connectId', '==', currentUser.partnerId));
-      const snap = await getDocs(q);
-      if (!snap.empty) targetUid = snap.docs[0].id;
+  const handleClaimBounty = async (id: number | string) => {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      const updater = (list: Bounty[]) => list.map(b => (b.id === id || b.id.toString() === id.toString()) ? { ...b, status: 'claimed' as const, claimedBy: currentUser.name } : b);
+      setMyBountiesState(prev => updater(prev));
+      setPartnerBountiesState(prev => updater(prev));
+      // Optional: Add automated chatter message like "I claimed this!"
+      return;
     }
-    const docRef = doc(db, 'users', targetUid, 'bounties', bountyId.toString());
-    await updateDoc(docRef, { status: 'claimed', claimedBy: currentUser.name });
+
+    // Find the bounty owner to update the document.
+    // If it's in 'myBountiesState', it's mine (self-claim?). If 'partnerBountiesState', it's partner's.
+    // We update whoever posted it.
+    const bounty = bounties.find(b => b.id === id || b.id.toString() === id.toString());
+    if (!bounty) return;
+
+    // Use partner.uid if postedBy partner, else my uid.
+    // Logic: if bounty.postedBy === currentUser.name -> my uid. Else partner uid.
+    // Simple check:
+    const ownerUid = bounty.postedBy === currentUser.name ? auth.currentUser?.uid : partner?.uid;
+
+    if (!ownerUid) return;
+
+    try {
+      // Find the DOC ID. We might need it.
+      // If `id` in Bounty object is a number (legacy) or randomly generated, we need to find the Firestore Doc ID.
+      // If we saved Firestore ID in the object (we usually don't in `bounties` type unless mapped), we query.
+      // The `bounties` state in this app seems to map `data()`... wait, does it include `id` as doc ID?
+      // Line 258 (original file, assumed): `const bounties = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))`?
+      // If so, `id` IS the doc ID.
+      // The interface `Bounty` has `id: number | string`.
+
+      const bountyRef = doc(db, 'users', ownerUid, 'bounties', id.toString());
+      await updateDoc(bountyRef, {
+        status: 'claimed',
+        claimedBy: currentUser.name
+      });
+    } catch (e) {
+      console.error("Error claiming bounty:", e);
+    }
   };
 
-  const handleToggleStatus = async (bountyId: number | string) => {
-    const bounty = bounties.find(b => b.id.toString() === bountyId.toString());
-    if (!bounty || !currentUser) return;
-    let targetUid = auth.currentUser!.uid;
-    if (bounty.postedBy !== currentUser.name && currentUser.partnerId) {
-      const q = query(collection(db, 'users'), where('connectId', '==', currentUser.partnerId));
-      const snap = await getDocs(q);
-      if (!snap.empty) targetUid = snap.docs[0].id;
+  const handleToggleStatus = async (id: number | string) => {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      const update = (list: Bounty[]) => list.map(b => {
+        if (b.id !== id && b.id.toString() !== id.toString()) return b;
+        const nextStatus: Bounty['status'] = b.status === 'available' ? 'claimed' : b.status === 'claimed' ? 'done' : 'available';
+        return { ...b, status: nextStatus, claimedBy: nextStatus === 'available' ? null : (b.claimedBy || currentUser?.name) };
+      });
+      setMyBountiesState(prev => update(prev));
+      setPartnerBountiesState(prev => update(prev));
+      return;
     }
-    if (bounty.status === 'claimed') {
-      await updateDoc(doc(db, 'users', targetUid, 'bounties', bountyId.toString()), { status: 'done' });
+
+    const bounty = bounties.find(b => b.id === id || b.id.toString() === id.toString());
+    if (!bounty) return;
+    const ownerUid = bounty.postedBy === currentUser?.name ? auth.currentUser?.uid : partner?.uid;
+    if (!ownerUid) return;
+
+    const nextStatus = bounty.status === 'claimed' ? 'done' : 'claimed'; // Original logic was only claimed -> done
+
+    try {
+      const bountyRef = doc(db, 'users', ownerUid, 'bounties', id.toString());
+      await updateDoc(bountyRef, { status: nextStatus });
+    } catch (e) {
+      console.error("Error toggling status:", e);
     }
+  };
+
+  const handleDeleteBounty = async (id: number | string) => {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      const filter = (list: Bounty[]) => list.filter(b => b.id !== id && b.id.toString() !== id.toString());
+      setMyBountiesState(prev => filter(prev));
+      setPartnerBountiesState(prev => filter(prev));
+      return;
+    }
+
+    const bounty = bounties.find(b => b.id === id || b.id.toString() === id.toString());
+    if (!bounty) return;
+    const ownerUid = bounty.postedBy === currentUser?.name ? auth.currentUser?.uid : partner?.uid;
+    if (!ownerUid) return;
+
+    try {
+      if (window.confirm("Are you sure you want to delete this favor?")) {
+        await deleteDoc(doc(db, 'users', ownerUid, 'bounties', id.toString()));
+      }
+    } catch (e: any) {
+      console.error("Error deleting bounty:", e);
+    }
+  };
+
+  const handleUpdateBounty = async (id: number | string, updates: Partial<Bounty>) => {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      const update = (list: Bounty[]) => list.map(b => (b.id === id || b.id.toString() === id.toString()) ? { ...b, ...updates } : b);
+      setMyBountiesState(prev => update(prev));
+      setPartnerBountiesState(prev => update(prev));
+      return;
+    }
+
+    const bounty = bounties.find(b => b.id === id || b.id.toString() === id.toString());
+    if (!bounty) return;
+
+    const targetUid = bounty.postedBy === currentUser.name ? auth.currentUser?.uid : partner?.uid;
+    if (!targetUid) return;
+
+    try {
+      await updateDoc(doc(db, 'users', targetUid, 'bounties', id.toString()), updates);
+    } catch (e: any) {
+      console.error("Error updating bounty:", e);
+    }
+  };
+
+  const handleArchiveBounty = async (id: number | string) => {
+    // Both demo and real mode can use handleUpdateBounty logic if it handles the abstraction, 
+    // but handleUpdateBounty is async.
+    await handleUpdateBounty(id, { status: 'archived' as const });
   };
 
   const handleReset = async () => {
@@ -579,6 +788,186 @@ const App: React.FC = () => {
     setHighlights(prev => [...prev, { id: Date.now().toString(), text, source, context, timestamp: Date.now() }]);
   };
 
+  const handleToggleReaction = async (noteId: string, authorUid: string, emoji: string) => {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      const updateReaction = (notes: ChatterNote[]) => notes.map(n => {
+        if (n.id === noteId || n.firestoreId === noteId) {
+          let currentReactions: any[] = Array.isArray(n.reactions) ? n.reactions : [];
+          // Handle legacy object if present (unlikely in demo but good practice)
+          if (!Array.isArray(n.reactions) && typeof n.reactions === 'object' && n.reactions !== null) {
+            currentReactions = Object.entries(n.reactions).map(([a, e]) => ({ author: a, emoji: e, timestamp: Date.now() }));
+          }
+
+          const existingIdx = currentReactions.findIndex((r: any) => r.author === currentUser.name && r.emoji === emoji);
+          if (existingIdx >= 0) {
+            currentReactions.splice(existingIdx, 1); // remove
+          } else {
+            currentReactions.push({ author: currentUser.name, emoji, timestamp: Date.now() }); // add
+          }
+          return { ...n, reactions: currentReactions };
+        }
+        return n;
+      });
+
+      setMyChatter(prev => updateReaction(prev));
+      setPartnerChatter(prev => updateReaction(prev));
+      return;
+    }
+
+    if (!authorUid) return;
+
+    try {
+      const noteRef = doc(db, 'users', authorUid, 'chatter', noteId);
+      const noteSnap = await getDoc(noteRef);
+
+      if (noteSnap.exists()) {
+        const noteData = noteSnap.data();
+        let currentReactions = noteData.reactions || [];
+
+        // Fix for legacy object-based reactions
+        if (!Array.isArray(currentReactions) && typeof currentReactions === 'object') {
+          currentReactions = Object.entries(currentReactions).map(([author, emoji]) => ({
+            author,
+            emoji,
+            timestamp: Date.now()
+          }));
+        }
+
+        // Check if I already reacted with this emoji
+        const existingIndex = currentReactions.findIndex(
+          (r: any) => r.author === currentUser.name && r.emoji === emoji
+        );
+
+        let newReactions;
+        if (existingIndex >= 0) {
+          // Remove it
+          newReactions = [...currentReactions];
+          newReactions.splice(existingIndex, 1);
+        } else {
+          // Add it
+          newReactions = [...currentReactions, { author: currentUser.name, emoji, timestamp: Date.now() }];
+        }
+
+        await updateDoc(noteRef, { reactions: newReactions });
+      }
+    } catch (e) {
+      console.error("Error toggling reaction:", e);
+    }
+  };
+
+  const markNoteAsRead = async (noteId: string, authorUid: string | undefined) => {
+    if (!currentUser) return;
+
+    if (isDemoMode) {
+      setPartnerChatter(prev => prev.map(n => {
+        if (n.id === noteId || n.firestoreId === noteId) {
+          return { ...n, status: 'read', readAt: Date.now() };
+        }
+        return n;
+      }));
+      return;
+    }
+
+    if (!auth.currentUser) return;
+
+    // Critical fix: Ensure authorUid is present. 
+    // If undefined, it might be a partner note where authorUid wasn't passed, so default to partner.uid if available.
+    // If it's my own note (rare for this function), it would be current user.
+    const targetUid = authorUid || (partner ? partner.uid : null);
+
+    if (!targetUid) {
+      console.warn(`Cannot mark note ${noteId} as read: Missing authorUid and no partner loaded.`);
+      return;
+    }
+
+    try {
+      const noteRef = doc(db, 'users', targetUid, 'chatter', noteId);
+      await updateDoc(noteRef, { status: 'read', readAt: Date.now() });
+    } catch (e) {
+      console.error(`Error marking read for ${noteId} (author: ${targetUid}):`, e);
+    }
+  };
+
+  const handleToggleRead = async (noteId: string, currentStatus: string | undefined, authorUid: string | undefined) => {
+    if (isDemoMode) {
+      setPartnerChatter(prev => prev.map(n => {
+        if (n.id === noteId || n.firestoreId === noteId) {
+          const newStatus = currentStatus === 'read' ? 'delivered' : 'read';
+          return { ...n, status: newStatus, readAt: newStatus === 'read' ? Date.now() : null };
+        }
+        return n;
+      }));
+      return;
+    }
+
+    // Toggle logic: If 'read', make 'delivered'. If 'delivered'/'sent', make 'read'.
+    const newStatus = currentStatus === 'read' ? 'delivered' : 'read';
+    const readAt = newStatus === 'read' ? Date.now() : null;
+
+    const targetUid = authorUid || (partner ? partner.uid : null);
+
+    if (!targetUid) {
+      console.warn(`Cannot toggle read for ${noteId}: Missing authorUid.`);
+      return;
+    }
+
+    try {
+      const noteRef = doc(db, 'users', targetUid, 'chatter', noteId);
+      await updateDoc(noteRef, { status: newStatus, readAt });
+    } catch (e) {
+      console.error("Error toggling read status:", e);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    if (!currentUser || !partner) return;
+    const partnerNotes = partnerChatter.filter(n => n.status !== 'read');
+    if (partnerNotes.length === 0) return;
+
+    console.log(`Marking ${partnerNotes.length} notes as read...`);
+    const updates = partnerNotes.map(async (n) => {
+      // Use firestoreId if available, fallback to id (but id might be timestamp if legacy)
+      const docId = n.firestoreId || n.id;
+      if (!docId) {
+        console.error("Cannot mark note as read: Missing ID", n);
+        return Promise.reject("Missing ID");
+      }
+      const ref = doc(db, 'users', partner.uid!, 'chatter', docId);
+      return updateDoc(ref, { status: 'read', readAt: Date.now() });
+    });
+
+    try {
+      const results = await Promise.allSettled(updates);
+      const rejected = results.filter(r => r.status === 'rejected');
+      if (rejected.length > 0) {
+        console.error(`Failed to mark ${rejected.length} notes as read:`, rejected);
+      } else {
+        console.log("Marked all read successfully");
+      }
+    } catch (e) {
+      console.error("Critical error in markAllRead:", e);
+    }
+  };
+
+  const handleMarkAllUnread = async () => {
+    if (!currentUser || !partner) return;
+    const partnerNotes = partnerChatter.filter(n => n.status === 'read');
+    if (partnerNotes.length === 0) return;
+
+    console.log(`Marking ${partnerNotes.length} notes as unread...`);
+    const updates = partnerNotes.map(n => {
+      const docId = n.firestoreId || n.id;
+      const ref = doc(db, 'users', partner.uid!, 'chatter', docId);
+      return updateDoc(ref, { status: 'delivered', readAt: null });
+    });
+    try {
+      await Promise.all(updates);
+      console.log("Marked all unread");
+    } catch (e) { console.error("Error marking unread:", e); }
+  };
+
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 space-y-4">
       <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -589,6 +978,7 @@ const App: React.FC = () => {
 
   return (
     <div className="bg-gray-50 min-h-screen text-gray-800 pb-24 relative overflow-x-hidden">
+      <ReloadPrompt />
       {/* Sidebar Overlay */}
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/40 z-[70] backdrop-blur-sm transition-opacity" />}
 
@@ -661,7 +1051,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <main className="animate-in fade-in duration-700 pb-32">
+        <main className="animate-in fade-in duration-700 pb-24">
           {activeTab === 'dashboard' && (
             <Dashboard
               currentUser={currentUser}
@@ -673,6 +1063,7 @@ const App: React.FC = () => {
               partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
               onNavigate={(tab) => setActiveTab(tab as Tab)}
               onTagClick={handleTagClickFromDashboard}
+              onNavigateContext={handleNavigateContext}
             />
           )}
 
@@ -689,11 +1080,12 @@ const App: React.FC = () => {
               // Safe access confirmed
               partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
               partnerName={partner?.name}
-              onDeleteNote={(id) => console.log("Delete note TODO", id)}
+              onDeleteNote={deleteNote}
               onDeleteBounty={(id) => console.log("Delete bounty TODO", id)}
               highlightedTermId={highlightedTermId}
               initialSearchTerm={pendingSearchTerm}
               onClearInitialSearch={() => setPendingSearchTerm(null)}
+              currentUser={currentUser}
             />
           )}
           {activeTab === 'chemistry' && (
@@ -713,10 +1105,13 @@ const App: React.FC = () => {
               bounties={bounties}
               currentUser={currentUser}
               bookmarks={allBookmarks[currentUser.name] || {}}
+              partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
               onAddBounty={handleAddBounty}
               onToggleStatus={handleToggleStatus}
               onClaimBounty={handleClaimBounty}
-              onDeleteBounty={(id) => console.log("Delete bounty TODO", id)}
+              onDeleteBounty={handleDeleteBounty}
+              onUpdateBounty={handleUpdateBounty}
+              onArchiveBounty={handleArchiveBounty}
               onDeleteNote={deleteNote}
               chatter={chatter}
               onAddNote={addNote}
@@ -734,6 +1129,10 @@ const App: React.FC = () => {
               sharedKey={sharedKey}
               onNavigateContext={handleNavigateContext}
               onMarkRead={markNoteAsRead}
+              onToggleReaction={handleToggleReaction}
+              onMarkAllRead={handleMarkAllRead}
+              onMarkAllUnread={handleMarkAllUnread}
+              onToggleRead={handleToggleRead}
             />
           )}
 
@@ -745,7 +1144,7 @@ const App: React.FC = () => {
               partner={partner}
               invites={invites}
               setInvites={setInvites}
-              onReset={() => console.log("Full Reset TODO")}
+              onReset={handleReset}
               onResetHandlers={handleResetCategory}
               onConnect={handleConnectPartner}
               sharingSettings={sharingSettings}
@@ -770,8 +1169,7 @@ const App: React.FC = () => {
           { id: 'dashboard', icon: '🏦', label: 'Bank' },
           { id: 'directory', icon: '📖', label: 'Directory' },
           { id: 'favors', icon: '🎟️', label: 'Favors' },
-          { id: 'journal', icon: '📓', label: 'Journal' },
-          { id: 'account', icon: '👤', label: 'Me' }
+          { id: 'journal', icon: '📓', label: 'Journal' }
         ].map(tab => (
           <button
             key={tab.id}

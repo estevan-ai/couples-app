@@ -87,7 +87,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ isOpen, onClose, filters, onF
                 </label>
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" checked={!!filters.showPartnerBoundaries} onChange={(e) => onFilterChange({ showPartnerBoundaries: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
-                  <span className="text-gray-600 text-xs font-medium">🚫 Limits</span>
+                  <span className="text-gray-600 text-xs font-medium">👎 Limits</span>
                 </label>
               </div>
             </div>
@@ -114,7 +114,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ isOpen, onClose, filters, onF
                 </label>
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input type="checkbox" checked={!!filters.showMyBoundaries} onChange={(e) => onFilterChange({ showMyBoundaries: e.target.checked })} className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
-                  <span className="text-gray-600 text-xs font-medium">🚫 Limits</span>
+                  <span className="text-gray-600 text-xs font-medium">👎 Limits</span>
                 </label>
               </div>
             </div>

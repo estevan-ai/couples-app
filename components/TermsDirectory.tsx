@@ -44,6 +44,7 @@ interface TermsDirectoryProps {
     onClearInitialTag?: () => void;
     initialSearchTerm?: string | null;
     onClearInitialSearch?: () => void;
+    currentUser?: import('../types').User;
 }
 
 const TermsDirectory: React.FC<TermsDirectoryProps> = ({
@@ -64,7 +65,8 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
     initialTagFilter,
     onClearInitialTag,
     initialSearchTerm,
-    onClearInitialSearch
+    onClearInitialSearch,
+    currentUser
 }) => {
     const [isPanelOpen, setIsPanelOpen] = useState(false);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -83,22 +85,44 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
         }
     }, [initialSearchTerm, onClearInitialSearch]);
 
-    // Scroll to highlighted term
+    // Scroll to highlighted term AND filter to it (User Request: "Center and filter")
     useEffect(() => {
         if (highlightedTermId) {
-            // Clear filters to ensure term is visible
-            setFilters(prev => ({ ...prev, searchTerm: '', category: 'all', tags: new Set(), showMyLoves: true, showMyLikes: true, showMyWork: true, showMyUnsure: true, showMyBoundaries: true }));
+            const termName = terms.find(t => t.id === highlightedTermId)?.name;
+            if (termName) {
+                // Set search term to filter ONLY this term
+                setFilters(prev => ({
+                    ...prev,
+                    searchTerm: termName,
+                    category: 'all',
+                    tags: new Set(),
+                    showMyLoves: true,
+                    showMyLikes: true,
+                    showMyWork: true,
+                    showMyUnsure: true,
+                    showMyBoundaries: true
+                }));
+            }
 
+            // Still scroll to ensure it's in view (though with 1 item it should be at top)
             setTimeout(() => {
                 const el = document.getElementById(`term-${highlightedTermId}`);
                 if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    const elementTop = el.getBoundingClientRect().top + window.scrollY;
+                    const windowHeight = window.innerHeight;
+                    const offset = windowHeight * 0.2; // Target 20% from top
+
+                    window.scrollTo({
+                        top: Math.max(0, elementTop - offset),
+                        behavior: 'smooth'
+                    });
+
                     el.classList.add('ring-4', 'ring-blue-300');
                     setTimeout(() => el.classList.remove('ring-4', 'ring-blue-300'), 2000);
                 }
             }, 300);
         }
-    }, [highlightedTermId]);
+    }, [highlightedTermId, terms]);
 
     // State for Bounty Modal
     const [selectedTermForBounty, setSelectedTermForBounty] = useState<Term | null>(null);
@@ -250,7 +274,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                     <p className="text-lg text-gray-500 max-w-2xl mx-auto">Explore and communicate your desires with clarity.</p>
                 </header>
 
-                <div className="sticky top-0 z-30 mb-6 px-2 py-4 bg-gray-50/95 backdrop-blur-sm transition-all">
+                <div className="sticky top-28 z-30 mb-6 px-2 py-4 bg-gray-50/95 backdrop-blur-sm transition-all rounded-b-2xl">
                     <div className="flex gap-3 max-w-full">
                         <input
                             type="text"
@@ -298,7 +322,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                             </button>
                             {!collapsedSections['love'] && (
                                 <div className={`grid gap-6 animate-in slide-in-from-top-2 duration-300 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                    {displayData.loved.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} />)}
+                                    {displayData.loved.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} currentUser={currentUser} />)}
                                 </div>
                             )}
                         </section>
@@ -364,7 +388,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                         )}
                         {!collapsedSections['explore'] && (
                             <div className={`grid gap-6 animate-in slide-in-from-top-2 duration-300 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                {displayData.others.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} />)}
+                                {displayData.others.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} currentUser={currentUser} />)}
                             </div>
                         )}
                     </section>
@@ -374,7 +398,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                             <button onClick={() => toggleSection('boundaries')} className="w-full flex items-center text-left mb-2 group outline-none">
                                 <span className={`text-xl text-gray-400 mr-2 transform transition-transform duration-300 ${collapsedSections['boundaries'] ? '-rotate-90' : 'rotate-0'}`}>▼</span>
                                 <h2 className="text-2xl font-serif font-bold text-gray-500 flex items-center gap-2">
-                                    <span className="text-3xl">🚫</span> Boundaries & No Interest
+                                    <span className="text-3xl">👎</span> Boundaries & No Interest
                                 </h2>
                             </button>
 
@@ -382,7 +406,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                                 <div className="animate-in slide-in-from-top-2 duration-300 pt-4">
                                     <p className="text-xs text-gray-400 mb-6 font-bold uppercase tracking-widest">These items are off the table for now.</p>
                                     <div className={`grid gap-6 opacity-60 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                        {displayData.skipped.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} />)}
+                                        {displayData.skipped.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} currentUser={currentUser} />)}
                                     </div>
                                 </div>
                             ) : (

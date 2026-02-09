@@ -291,7 +291,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                             )}
                                             {bookmark && (
                                                 <div className="absolute bottom-2 right-2 text-2xl filter drop-shadow-sm">
-                                                    {bookmark === 'love' ? '❤️' : bookmark === 'like' ? '🤔' : bookmark === 'work' ? '🎟️' : bookmark === 'unsure' ? '❔' : '🚫'}
+                                                    {bookmark === 'love' ? '❤️' : bookmark === 'like' ? '🤔' : bookmark === 'work' ? '🎟️' : bookmark === 'unsure' ? '❔' : '👎'}
                                                 </div>
                                             )}
                                         </button>
@@ -329,7 +329,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                 {/* Row 2: 2 columns */}
                                 <div className="grid grid-cols-2 gap-2">
                                     {[
-                                        { type: 'skip' as Bookmark, icon: '🚫', label: 'No Interest', color: 'bg-gray-400' },
+                                        { type: 'skip' as Bookmark, icon: '👎', label: 'Not Interested', color: 'bg-gray-400' },
                                         { type: 'unsure' as Bookmark, icon: '❔', label: 'Unsure/Skip', color: 'bg-gray-200 text-gray-600' }
                                     ].map(action => (
                                         <button

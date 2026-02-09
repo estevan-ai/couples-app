@@ -89,6 +89,31 @@ const ChemistryGuide: React.FC<ChemistryGuideProps> = ({ currentUser, partner, b
                     initialQuery={aiPrompt}
                     onPinInsight={onPinInsight}
                 />
+
+                <div className="absolute top-0 right-0 p-4">
+                    <div className="relative group">
+                        <button className="w-8 h-8 rounded-full bg-gray-100 text-gray-400 font-bold hover:bg-gray-200 hover:text-gray-600 transition flex items-center justify-center">
+                            ?
+                        </button>
+                        <div className="absolute right-0 top-10 w-72 bg-white p-5 rounded-2xl shadow-xl border border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto z-10 text-left">
+                            <h4 className="font-bold text-gray-800 mb-3 text-sm uppercase tracking-wider">How to Read This</h4>
+                            <div className="space-y-3 text-sm">
+                                <div>
+                                    <span className="font-bold text-pink-600">🔥 Shared Loves</span>
+                                    <p className="text-gray-500 text-xs mt-0.5">Things you <strong>BOTH</strong> marked as "Love". The sweet spot.</p>
+                                </div>
+                                <div>
+                                    <span className="font-bold text-blue-600">🧩 Complementary</span>
+                                    <p className="text-gray-500 text-xs mt-0.5">"Love" + "Like/Work". One person is super passionate, the other is willing. Great for taking turns leading.</p>
+                                </div>
+                                <div>
+                                    <span className="font-bold text-purple-600">🌱 Growth Areas</span>
+                                    <p className="text-gray-500 text-xs mt-0.5">"Love" + "Unsure". One loves it, the other is unsure. Invitation to explore gently.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </header>
 
             {/* Alignment Section */}
