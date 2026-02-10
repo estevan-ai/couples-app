@@ -323,10 +323,12 @@ const App: React.FC = () => {
           });
 
           unsubPartnerChatter = onSnapshot(collection(db, 'users', pUid, 'chatter'), (s) => {
+            console.log("Partner Chatter Snapshot Size:", s.size);
             const notes = s.docs.map(d => {
               const data = d.data();
               return { ...data, reactions: normalizeReactions(data), firestoreId: d.id } as ChatterNote;
             });
+            console.log("Parsed Partner Notes:", notes);
             setPartnerChatter(notes);
           });
         }
@@ -378,22 +380,41 @@ const App: React.FC = () => {
   const handleIndividualSetup = async (name: string, isDemo: boolean = false, email: string = '', initialBookmarks?: Record<number, Bookmark>) => {
     if (isDemo) {
       setIsDemoMode(true);
-      setCurrentUser(demoUser);
-      setPartner(demoPartner);
+      // Determine who is who based on selection
+      // If name includes "Jane", user is Jane, partner is John.
+      // Default (or John) makes user John, partner Jane.
+      const isJane = name.includes("Jane");
+      const activeUser = isJane ? demoPartner : demoUser;
+      const activePartner = isJane ? demoUser : demoPartner;
 
-      // Initialize Demo Data with mock IDs if needed
+      setCurrentUser(activeUser);
+      setPartner(activePartner);
+
+      // Initialize Demo Data with mock IDs
       const initializedBounties = demoBounties.map((b, i) => ({ ...b, id: 1000 + i } as Bounty));
-      setMyBountiesState(initializedBounties.filter(b => b.postedBy === demoUser.name));
-      setPartnerBountiesState(initializedBounties.filter(b => b.postedBy === demoPartner.name));
+
+      // My Bounties: Posted by ME (activeUser)
+      setMyBountiesState(initializedBounties.filter(b => b.postedBy === activeUser.name));
+      // Partner Bounties: Posted by PARTNER
+      setPartnerBountiesState(initializedBounties.filter(b => b.postedBy === activePartner.name));
 
       // Chatter
-      setMyChatter(demoChatter.filter(c => c.author === demoUser.name));
-      setPartnerChatter(demoChatter.filter(c => c.author === demoPartner.name));
+      setMyChatter(demoChatter.filter(c => c.author === activeUser.name));
+      setPartnerChatter(demoChatter.filter(c => c.author === activePartner.name));
+
 
       // Bookmarks
+      // If I am Jane, load Jane's bookmarks. If John, load John's.
+      // Demo data usually has hardcoded bookmarks? 
+      // Let's implement dynamic bookmarks for demo.
+      // For now, let's say Jane loves "Massages" (id 7) and John loves "Kissing" (id 5).
+
+      const janeBookmarks: Record<number, Bookmark> = { 7: 'love', 100: 'like' };
+      const johnBookmarks: Record<number, Bookmark> = { 5: 'love', 7: 'like' };
+
       setAllBookmarks({
-        [demoUser.name]: initialBookmarks || {},
-        [demoPartner.name]: { 7: 'love', 5: 'like', 100: 'work' } // Mock partner bookmarks including 'work'
+        [activeUser.name]: isJane ? janeBookmarks : johnBookmarks,
+        [activePartner.name]: isJane ? johnBookmarks : janeBookmarks
       });
 
       setLoading(false);
@@ -1040,7 +1061,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-4 bg-white/80 backdrop-blur-md px-6 py-4 rounded-3xl shadow-sm border border-gray-100 transition-all duration-300">
               <img src="/logo.png" alt="Logo" className="w-24 h-24 object-contain drop-shadow-sm" />
               <div className="flex flex-col items-start leading-none">
-                <h1 className="text-xl font-serif font-bold text-gray-800 tracking-tight">The Couples' Currency</h1>
+                <h1 className="text-xl font-serif font-bold text-gray-800 tracking-tight">The Couple's Currency</h1>
                 <p className="text-[10px] font-serif italic text-gray-500 tracking-wide mt-1">Investing in Us.</p>
               </div>
             </div>
@@ -1191,6 +1212,7 @@ const App: React.FC = () => {
           <span className="text-[9px] uppercase tracking-wide mt-1 block">Flirts</span>
         </button>
       </div>
+      <ReloadPrompt />
       <Chatbot />
       <InstallPrompt isOpen={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
     </div>

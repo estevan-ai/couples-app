@@ -115,12 +115,8 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
     };
 
     const handleDemo = async (who: 'Jane' | 'John') => {
-        try {
-            await signInAnonymously(auth);
-            onSetupComplete(`${who} Doe 1234`, true, `${who.toLowerCase()}doe@testemail.com`);
-        } catch (e) {
-            console.error("Error signing in anonymously:", e);
-        }
+        // Bypass auth for instant demo access
+        onSetupComplete(`${who} Doe 1234`, true, `${who.toLowerCase()}doe@testemail.com`);
     };
 
     const completedCategoriesCount = categories.filter(cat => isCategoryComplete(cat.name)).length;
@@ -141,8 +137,8 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                 {step === 'age' && (
                     <div className="space-y-8 animate-in fade-in duration-500">
                         <div className="text-center mb-10">
-                            <img src="/logo.png" alt="Couples Currency" className="w-[280px] mx-auto mb-8 drop-shadow-2xl" />
-                            <h1 className="text-4xl font-serif font-bold text-gray-800 mb-2">The Couples' Currency</h1>
+                            <img src="/logo.svg" alt="Couples Currency" className="w-[280px] mx-auto mb-8 drop-shadow-2xl" />
+                            <h1 className="text-4xl font-serif font-bold text-gray-800 mb-2">The Couple's Currency</h1>
                             <p className="text-lg font-serif italic text-gray-500">Investing in Us.</p>
                         </div>
                         <button onClick={() => setStep('auth')} className="w-full py-6 text-xl font-bold bg-blue-600 text-white rounded-[2rem] hover:bg-blue-700 transition shadow-xl">I am 18+</button>

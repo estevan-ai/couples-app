@@ -188,7 +188,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
         Object.keys(chatter).forEach(contextId => {
             const notes = chatter[contextId];
             notes.forEach(note => {
-                if (now - note.timestamp > EXPIRE_MS) return;
+                // if (now - note.timestamp > EXPIRE_MS) return;
 
                 // Construct context name for generic items
                 let contextName = 'Unknown';
@@ -211,7 +211,8 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
                     ...note,
                     contextId,
                     contextName,
-                    authorUid: note.author === currentUser.name ? currentUser.uid : (partner?.uid || ''),
+                    sender: note.author, // Explicitly pass author
+                    authorUid: note.author === currentUser.name ? currentUser.uid : (partner?.uid || 'partner-uid'), // Fallback for demo
                     type: 'note'
                 });
 
@@ -253,7 +254,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
         Object.keys(chatter).forEach(contextId => {
             const notes = chatter[contextId];
             notes.forEach(note => {
-                if (now - note.timestamp > EXPIRE_MS) return;
+                // if (now - note.timestamp > EXPIRE_MS) return;
                 if (contextId === 'general-flirt') {
                     activity.push({ ...note, contextId, contextName: 'Fast Flirt' });
                 } else if (contextId.startsWith('flirt-')) {
@@ -261,6 +262,14 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({ currentUser, partner, chatt
                     const foundFlirt = flirts?.find(f => f.id === id);
                     const contextName = foundFlirt ? `Flirt: ${foundFlirt.text.substring(0, 15)}...` : "Flirt";
                     activity.push({ ...note, contextId, contextName });
+                } else if (contextId.includes('term-')) {
+                    // Fetch term name if possible, or just use generic
+                    // extracting ID from 'term-47'
+                    // const termId = parseInt(contextId.split('-')[1]);
+                    // const term = termsData.find(t => t.id === termId);
+                    activity.push({ ...note, contextId, contextName: 'Directory Chat' });
+                } else if (contextId.includes('bounty-')) {
+                    activity.push({ ...note, contextId, contextName: 'Favor Chat' });
                 }
             });
         });

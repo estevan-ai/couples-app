@@ -9,8 +9,8 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['logo.png', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
-        name: "The Couples' Currency",
-        short_name: "Couples' Currency",
+        name: "The Couple's Currency",
+        short_name: "Couple's Currency",
         description: "Investing in Us.",
         theme_color: "#ffffff",
         background_color: "#ffffff",
