@@ -16,6 +16,8 @@ interface ConnectionCenterProps {
     onMarkAllRead: () => void;
     onMarkAllUnread: () => void;
     onToggleRead: (noteId: string, currentStatus: string | undefined, authorUid: string) => void;
+    onEditNote: (id: string, newText: string) => void;
+    privateKey: CryptoKey | null;
 }
 
 const ConnectionCenter: React.FC<ConnectionCenterProps> = (props) => {

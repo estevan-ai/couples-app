@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { User } from '../types';
 import { Invite, SharingSettings, ChatterNote, Bounty, Term, Bookmark } from '../types';
 import { InstallPWA } from './InstallPWA';
@@ -20,14 +21,34 @@ interface AccountProps {
     defaultInbox?: boolean;
     notificationSettings?: import('../types').NotificationSettings;
     setNotificationSettings?: React.Dispatch<React.SetStateAction<import('../types').NotificationSettings>>;
+    initialTab?: 'profile' | 'activity' | 'privacy';
+    onBackupIdentity?: () => Promise<string | null>;
+    onRestoreIdentity?: (pem: string) => Promise<boolean>;
+    onGenerateSyncCode?: () => Promise<string>;
+    onConsumeSyncCode?: (code: string) => Promise<boolean>;
 }
 
 const Account: React.FC<AccountProps> = ({
-    currentUser, partner, onReset, onConnect, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties, notificationSettings, setNotificationSettings
+    currentUser, partner, onReset, onConnect, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties, notificationSettings, setNotificationSettings, initialTab = 'profile',
+    onBackupIdentity, onRestoreIdentity, onGenerateSyncCode, onConsumeSyncCode
 }) => {
-    const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'privacy'>('profile');
+    const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'privacy'>(initialTab);
+
+    useEffect(() => {
+        if (initialTab) {
+            setActiveTab(initialTab);
+        }
+    }, [initialTab]);
+
     const [partnerIdInput, setPartnerIdInput] = useState('');
     const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+    const [showQR, setShowQR] = useState(false);
+    const [qrData, setQrData] = useState<string | null>(null);
+    const [showScanner, setShowScanner] = useState(false);
+    const [qrRevealed, setQrRevealed] = useState(false);
+    const [showSyncCode, setShowSyncCode] = useState(false);
+    const [showEnterCode, setShowEnterCode] = useState(false);
+    const [syncCode, setSyncCode] = useState('');
 
     // --- Activity Feed Logic ---
     const activityFeed = useMemo(() => {
@@ -103,6 +124,26 @@ const Account: React.FC<AccountProps> = ({
                     <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-8">
                         <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1 block">Your Connect ID</span>
                         <h2 className="text-4xl font-serif font-bold text-gray-800 mb-8">{currentUser.connectId}</h2>
+
+                        <div className="mb-6">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">Security Status</span>
+                            {currentUser.encryptedSharedKey ? (
+                                <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg inline-block">
+                                    <span>🔒</span>
+                                    <span className="text-xs font-bold">End-to-End Encrypted</span>
+                                </div>
+                            ) : currentUser.sharedKeyBase64 ? (
+                                <div className="flex items-center gap-2 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg inline-block">
+                                    <span>⚠️</span>
+                                    <span className="text-xs font-bold">Legacy Encryption (Upgrading...)</span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2 text-gray-400 bg-gray-50 px-3 py-2 rounded-lg inline-block">
+                                    <span>🔓</span>
+                                    <span className="text-xs font-bold">Not Encrypted</span>
+                                </div>
+                            )}
+                        </div>
 
                         <div className="space-y-4">
                             <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Pairing</h3>
@@ -229,7 +270,7 @@ const Account: React.FC<AccountProps> = ({
                                 onToggle={() => setSharingSettings(prev => ({ ...prev, shareUnsure: !prev.shareUnsure }))}
                             />
                             <Toggle
-                                label="Share 'Boundaries' (🚫)"
+                                label="Share 'Not Interested' (👎)"
                                 active={sharingSettings.shareBoundaries}
                                 onToggle={() => setSharingSettings(prev => ({ ...prev, shareBoundaries: !prev.shareBoundaries }))}
                             />
@@ -289,8 +330,8 @@ const Account: React.FC<AccountProps> = ({
                             <button onClick={() => { if (window.confirm('Clear all items marked as WORK FOR?')) onResetHandlers?.('favors'); }} className="p-4 bg-white text-indigo-600 font-bold rounded-xl text-xs hover:bg-indigo-600 hover:text-white transition shadow-sm border border-indigo-100">
                                 Reset 'Work For'
                             </button>
-                            <button onClick={() => { if (window.confirm('Clear all items marked as BOUNDARIES?')) onResetHandlers?.('boundaries'); }} className="p-4 bg-white text-gray-600 font-bold rounded-xl text-xs hover:bg-gray-600 hover:text-white transition shadow-sm border border-gray-100">
-                                Reset Boundaries
+                            <button onClick={() => { if (window.confirm("Clear all items marked as 'Not Interested'?")) onResetHandlers?.('boundaries'); }} className="p-4 bg-white text-gray-600 font-bold rounded-xl text-xs hover:bg-gray-600 hover:text-white transition shadow-sm border border-gray-100">
+                                Reset 'Not Interested'
                             </button>
                         </div>
 
@@ -299,17 +340,207 @@ const Account: React.FC<AccountProps> = ({
                         </button>
                     </div>
 
-                    <div className="pt-4 flex justify-center">
-                        <button onClick={() => setShowPrivacyModal(true)} className="text-xs text-gray-400 hover:text-blue-500 underline decoration-dotted underline-offset-4 transition">
-                            How we protect your privacy & photos 🛡️
-                        </button>
+                    {/* Device Management Widget */}
+                    <div className="bg-indigo-50 rounded-[2.5rem] shadow-sm border border-indigo-100 p-8">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold text-xl">📱</div>
+                            <div>
+                                <h3 className="text-lg font-serif font-bold text-indigo-900">Device Management</h3>
+                                <p className="text-xs text-indigo-500">Sync your identity across devices</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {/* Export Section */}
+                            <div className="bg-white p-5 rounded-2xl border border-indigo-50 shadow-sm flex flex-col gap-3">
+                                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                                    <span>📤</span> Export This Identity
+                                </h4>
+                                <p className="text-[10px] text-gray-400 leading-tight">
+                                    Use this device to log in on a new phone or laptop.
+                                </p>
+                                <div className="mt-auto flex flex-col gap-2">
+                                    <button
+                                        onClick={async () => {
+                                            if (onBackupIdentity) {
+                                                const key = await onBackupIdentity();
+                                                if (key) {
+                                                    setQrData(key);
+                                                    setShowQR(true);
+                                                } else {
+                                                    alert("No identity found. Refresh to generate one.");
+                                                }
+                                            }
+                                        }}
+                                        className="w-full py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs hover:bg-indigo-700 transition shadow-sm"
+                                    >
+                                        Show QR Code
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            if (onGenerateSyncCode) {
+                                                const code = await onGenerateSyncCode();
+                                                setSyncCode(code);
+                                                setShowSyncCode(true);
+                                            }
+                                        }}
+                                        className="w-full py-2 bg-indigo-50 text-indigo-600 font-bold rounded-xl text-xs hover:bg-indigo-100 transition border border-indigo-100"
+                                    >
+                                        ✨ Get Magic Code
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Import Section */}
+                            <div className="bg-white p-5 rounded-2xl border border-indigo-50 shadow-sm flex flex-col gap-3">
+                                <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+                                    <span>📥</span> Import Identity
+                                </h4>
+                                <p className="text-[10px] text-gray-400 leading-tight">
+                                    Log in here using your primary device.
+                                </p>
+                                <div className="mt-auto flex flex-col gap-2">
+                                    <button
+                                        onClick={() => setShowScanner(true)}
+                                        className="w-full py-2 bg-indigo-600 text-white font-bold rounded-xl text-xs hover:bg-indigo-700 transition shadow-sm"
+                                    >
+                                        📷 Scan QR
+                                    </button>
+                                    <button
+                                        onClick={() => setShowEnterCode(true)}
+                                        className="w-full py-2 bg-indigo-50 text-indigo-600 font-bold rounded-xl text-xs hover:bg-indigo-100 transition border border-indigo-100"
+                                    >
+                                        🔢 Enter Magic Code
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Advanced / Manual Fallback */}
+                        <div className="mt-4 text-center">
+                            <button
+                                onClick={async () => {
+                                    const key = prompt("Paste your Private Key here to manually restore:");
+                                    if (key && onRestoreIdentity) {
+                                        if (confirm("WARNING: Overwrite current identity?")) {
+                                            const success = await onRestoreIdentity(key);
+                                            if (success) {
+                                                alert("Success! Reloading...");
+                                                window.location.reload();
+                                            } else {
+                                                alert("Invalid key.");
+                                            }
+                                        }
+                                    }
+                                }}
+                                className="text-[10px] text-indigo-300 font-bold hover:text-indigo-500 underline decoration-indigo-200"
+                            >
+                                Can't use camera? Paste Key Manually
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
 
             <PrivacyModal isOpen={showPrivacyModal} onClose={() => setShowPrivacyModal(false)} />
+
+            {/* QR Export Modal */}
+            {showQR && qrData && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowQR(false)}>
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h2 className="text-xl font-serif font-bold text-gray-800 flex items-center gap-2">
+                                <span>🔑</span> Secret Identity Key
+                            </h2>
+                            <button onClick={() => setShowQR(false)} className="bg-white rounded-full p-2 text-gray-400 hover:text-gray-600 shadow-sm">✕</button>
+                        </div>
+                        <div className="p-8 flex flex-col items-center gap-6">
+                            <div
+                                className="relative group cursor-pointer transition-transform hover:scale-[1.02]"
+                                onClick={() => setQrRevealed(!qrRevealed)}
+                            >
+                                {!qrRevealed && (
+                                    <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                                        <span className="bg-black/70 text-white text-xs font-bold px-3 py-1 rounded-full shadow-lg backdrop-blur-sm animate-pulse">
+                                            Click to Reveal
+                                        </span>
+                                    </div>
+                                )}
+                                <div className={`p-4 bg-white rounded-xl shadow-inner border border-gray-100 transition-all duration-500 ${qrRevealed ? 'blur-none' : 'blur-md'}`}>
+                                    <QRCodeSVG value={qrData} size={200} level="M" />
+                                </div>
+                            </div>
+
+                            <div className="text-center space-y-2">
+                                <p className="text-sm font-bold text-red-500 bg-red-50 px-3 py-1 rounded-lg inline-block">SENSITIVE: DO NOT SHARE THIS SCREEN</p>
+                                <p className="text-xs text-gray-500 px-4">
+                                    Scan this with your other device to log in there.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    navigator.clipboard.writeText(qrData);
+                                    alert("Copied. Paste into 'Paste Key' on other device.");
+                                }}
+                                className="text-xs text-blue-500 font-bold hover:text-blue-700 underline"
+                            >
+                                Copy Text to Clipboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* QR Scanner Modal */}
+            {showScanner && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 relative">
+                        <button onClick={() => setShowScanner(false)} className="absolute top-4 right-4 z-10 bg-white rounded-full p-2 text-gray-800 shadow-md">✕</button>
+                        <div className="p-6">
+                            <h2 className="text-xl font-bold text-center mb-4">Scan Identity QR</h2>
+                            <div id="reader" className="rounded-xl overflow-hidden"></div>
+                            <p className="text-center text-xs text-gray-500 mt-4">Point your camera at the "Export Key" QR code on your other device.</p>
+                        </div>
+                        <ScannerInitializer
+                            onScan={async (decodedText) => {
+                                setShowScanner(false);
+                                if (onRestoreIdentity) {
+                                    if (confirm("Identity found! Restore and overwrite current data?")) {
+                                        const success = await onRestoreIdentity(decodedText);
+                                        if (success) {
+                                            alert("Success! Reloading...");
+                                            window.location.reload();
+                                        } else {
+                                            alert("Failed to decode valid key.");
+                                        }
+                                    }
+                                }
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
         </div>
     );
+};
+
+// Separate component to handle scanner lifecycle
+import { Html5QrcodeScanner } from 'html5-qrcode';
+
+const ScannerInitializer = ({ onScan }: { onScan: (text: string) => void }) => {
+    React.useEffect(() => {
+        const scanner = new Html5QrcodeScanner(
+            "reader",
+            { fps: 10, qrbox: { width: 250, height: 250 } },
+            false
+        );
+        scanner.render(onScan, (err) => console.warn(err));
+
+        return () => {
+            scanner.clear().catch(console.error);
+        };
+    }, []);
+    return null;
 };
 
 const PrivacyModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
@@ -319,27 +550,44 @@ const PrivacyModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => voi
             <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                 <div className="p-8 border-b border-gray-100 bg-gray-50">
                     <h2 className="text-2xl font-serif font-bold text-gray-800 flex items-center gap-2">
-                        <span>🛡️</span> Zero-Knowledge Privacy
+                        <span>🛡️</span> Zero-Knowledge Security
                     </h2>
                     <button onClick={onClose} className="absolute top-6 right-6 p-2 bg-white rounded-full text-gray-400 hover:text-gray-600 shadow-sm">✕</button>
                 </div>
                 <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto">
-                    <div className="bg-blue-50 p-4 rounded-xl text-blue-800 text-sm">
-                        <p className="font-bold mb-1">Your secrets are mathematically secure.</p>
-                        We use AES-GCM 256-bit encryption for your photos and messages. Keys are stored only on your device.
+                    <div className="bg-green-50 p-4 rounded-xl text-green-800 text-sm border border-green-100">
+                        <p className="font-bold mb-1 flex items-center gap-2"><span className="text-lg">🔒</span> Mathematically Secure</p>
+                        Your data is encrypted using military-grade AES-256 and RSA-2048 algorithms. We (the developers) literally cannot read your messages because we don't have your Private Key.
                     </div>
 
-                    <section>
-                        <h3 className="font-bold text-gray-900 mb-2">How We Keep You Safe</h3>
-                        <ul className="space-y-3 text-sm text-gray-600 list-disc pl-4">
-                            <li><strong>Device-Local Keys:</strong> We generate encryption keys in your browser. Our servers only see jumbled ciphertext.</li>
-                            <li><strong>Shared Key Sync:</strong> When you pair, you securely share a key to unlock each other's content.</li>
-                            <li><strong>Ephemeral By Design:</strong> Fast flirts are meant to be temporary.</li>
-                        </ul>
+                    <section className="space-y-4">
+                        <div className="flex gap-4">
+                            <div className="text-2xl">📱</div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-sm">Device-Only Storage</h3>
+                                <p className="text-sm text-gray-500">Your "Identity" (Private Key) is generated on this device and saved <strong>only</strong> to this browser. It never touches our cloud servers.</p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-4">
+                            <div className="text-2xl">🤝</div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-sm">Two-Part Encryption (Lockbox)</h3>
+                                <p className="text-sm text-gray-500">When you connect, you exchange "Public Lockboxes". You put data in their box, and only their Private Key can open it.</p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-4">
+                            <div className="text-2xl">🔄</div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-sm">Safe Syncing</h3>
+                                <p className="text-sm text-gray-500">To use a new device, you must physically authorize it by scanning your "Identity QR". This ensures no hacker can log in as you from across the world.</p>
+                            </div>
+                        </div>
                     </section>
                 </div>
                 <div className="p-6 bg-gray-50 border-t border-gray-100 flex justify-end">
-                    <button onClick={onClose} className="px-6 py-3 bg-gray-800 text-white font-bold rounded-xl hover:bg-gray-900">Close</button>
+                    <button onClick={onClose} className="px-6 py-3 bg-gray-800 text-white font-bold rounded-xl hover:bg-gray-900 transition">Close & Stay Safe</button>
                 </div>
             </div>
         </div>

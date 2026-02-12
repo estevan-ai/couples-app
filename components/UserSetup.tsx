@@ -3,9 +3,10 @@ import { termsData } from '../constants';
 import { Bookmark } from '../types';
 import { GoogleAuthProvider, signInWithPopup, signInAnonymously } from 'firebase/auth';
 import { auth } from '../firebase';
+import { generateRSAKeyPair, exportPublicKey, exportPrivateKey } from '../utils/encryption';
 
 interface UserSetupProps {
-    onSetupComplete: (name: string, isDemo?: boolean, email?: string, initialBookmarks?: Record<number, Bookmark>) => void;
+    onSetupComplete: (name: string, isDemo?: boolean, email?: string, initialBookmarks?: Record<number, Bookmark>, publicKey?: string, privateKey?: string) => void;
     initialStep?: 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour';
     initialName?: string;
     initialEmail?: string;
@@ -116,7 +117,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
 
     const handleDemo = async (who: 'Jane' | 'John') => {
         // Bypass auth for instant demo access
-        onSetupComplete(`${who} Doe 1234`, true, `${who.toLowerCase()}doe@testemail.com`);
+        onSetupComplete(`${who} Doe 1234`, true, `${who.toLowerCase()}doe @testemail.com`);
     };
 
     const completedCategoriesCount = categories.filter(cat => isCategoryComplete(cat.name)).length;
@@ -137,7 +138,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                 {step === 'age' && (
                     <div className="space-y-8 animate-in fade-in duration-500">
                         <div className="text-center mb-10">
-                            <img src="/logo.svg" alt="Couples Currency" className="w-[280px] mx-auto mb-8 drop-shadow-2xl" />
+                            <img src="/Logo-V2.svg" alt="Couples Currency" className="w-[280px] mx-auto mb-8 drop-shadow-2xl" />
                             <h1 className="text-4xl font-serif font-bold text-gray-800 mb-2">The Couple's Currency</h1>
                             <p className="text-lg font-serif italic text-gray-500">Investing in Us.</p>
                         </div>
@@ -215,9 +216,9 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                     <button
                                         key={idx}
                                         onClick={() => { setSelectedSpice(cat.name); setStep('onboarding'); }}
-                                        className={`group relative flex items-center gap-4 p-4 rounded-3xl border text-left transition-all active:scale-95 ${isDone ? 'bg-green-50/40 border-green-200 shadow-none' : 'bg-white border-gray-100 shadow-sm hover:border-blue-200'}`}
+                                        className={`group relative flex items - center gap - 4 p - 4 rounded - 3xl border text - left transition - all active: scale - 95 ${isDone ? 'bg-green-50/40 border-green-200 shadow-none' : 'bg-white border-gray-100 shadow-sm hover:border-blue-200'} `}
                                     >
-                                        <div className={`w-14 h-14 ${cat.color} rounded-2xl shadow-inner flex items-center justify-center text-3xl flex-shrink-0 relative`}>
+                                        <div className={`w - 14 h - 14 ${cat.color} rounded - 2xl shadow - inner flex items - center justify - center text - 3xl flex - shrink - 0 relative`}>
                                             {cat.icon}
                                             {isDone && (
                                                 <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white animate-in zoom-in">✓</div>
@@ -240,7 +241,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                             </div>
                             <button
                                 onClick={() => setStep('tour')}
-                                className={`w-full py-5 text-xl font-bold rounded-[2rem] transition-all shadow-xl ${completedCategoriesCount > 0 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                                className={`w - full py - 5 text - xl font - bold rounded - [2rem] transition - all shadow - xl ${completedCategoriesCount > 0 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'} `}
                                 disabled={completedCategoriesCount === 0}
                             >
                                 {completedCategoriesCount === 5 ? 'Finish & Explore' : 'Continue to Dashboard'}
@@ -273,10 +274,10 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         <button
                                             key={term.id}
                                             onClick={() => toggleTermSelection(term.id)}
-                                            className={`relative p-4 rounded-3xl border-2 text-left transition-all h-44 flex flex-col justify-between ${bookmark ? 'bg-gray-50 border-gray-100 opacity-40 grayscale pointer-events-none shadow-none' :
+                                            className={`relative p - 4 rounded - 3xl border - 2 text - left transition - all h - 44 flex flex - col justify - between ${bookmark ? 'bg-gray-50 border-gray-100 opacity-40 grayscale pointer-events-none shadow-none' :
                                                 isSelected ? 'bg-blue-50 border-blue-500 ring-4 ring-blue-50' :
                                                     'bg-white border-gray-100 hover:border-gray-300 shadow-sm'
-                                                }`}
+                                                } `}
                                         >
                                             <div className="overflow-hidden">
                                                 <p className="font-bold text-sm text-gray-800 leading-tight mb-2 truncate">{term.name}</p>
@@ -297,7 +298,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                         </div>
 
                         {/* Minimalist Floating Action Bar - Updated to 3+2 layout */}
-                        <div className={`absolute bottom-0 left-0 right-0 p-4 z-10 transition-all duration-500 transform ${selectedTermIds.length > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'}`}>
+                        <div className={`absolute bottom - 0 left - 0 right - 0 p - 4 z - 10 transition - all duration - 500 transform ${selectedTermIds.length > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'} `}>
                             <div className="bg-white/95 backdrop-blur-md border border-gray-200 p-5 rounded-[2.5rem] shadow-2xl space-y-3">
                                 <div className="flex justify-between items-center mb-1">
                                     <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest">Group Sort ({selectedTermIds.length})</p>
@@ -314,7 +315,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         <button
                                             key={action.type}
                                             onClick={() => handleBatchAction(action.type)}
-                                            className={`py-3.5 ${action.color} text-white rounded-2xl flex flex-col items-center gap-1 shadow-md active:scale-95 transition-all`}
+                                            className={`py - 3.5 ${action.color} text - white rounded - 2xl flex flex - col items - center gap - 1 shadow - md active: scale - 95 transition - all`}
                                         >
                                             <span className="text-xl">{action.icon}</span>
                                             <span className="text-[9px] font-black uppercase tracking-tighter">{action.label}</span>
@@ -331,7 +332,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         <button
                                             key={action.type}
                                             onClick={() => handleBatchAction(action.type)}
-                                            className={`py-3.5 ${action.color} ${action.type === 'unsure' ? '' : 'text-white'} rounded-2xl flex flex-col items-center gap-1 shadow-md active:scale-95 transition-all`}
+                                            className={`py - 3.5 ${action.color} ${action.type === 'unsure' ? '' : 'text-white'} rounded - 2xl flex flex - col items - center gap - 1 shadow - md active: scale - 95 transition - all`}
                                         >
                                             <span className="text-xl">{action.icon}</span>
                                             <span className="text-[9px] font-black uppercase tracking-tighter">{action.label}</span>
@@ -368,16 +369,26 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                         <div className="space-y-6 mt-8">
                             <div className="flex justify-center gap-2">
                                 {tourSteps.map((_, i) => (
-                                    <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === tourStep ? 'w-6 bg-blue-600' : 'w-1.5 bg-gray-200'}`} />
+                                    <div key={i} className={`h - 1.5 rounded - full transition - all duration - 300 ${i === tourStep ? 'w-6 bg-blue-600' : 'w-1.5 bg-gray-200'} `} />
                                 ))}
                             </div>
 
                             <button
-                                onClick={() => {
+                                onClick={async () => {
                                     if (tourStep < tourSteps.length - 1) {
                                         setTourStep(tourStep + 1);
                                     } else {
-                                        onSetupComplete(name.trim() || 'User', false, email, currentBookmarks);
+                                        // Generate Keys
+                                        let pubKey: string | undefined;
+                                        let privKey: string | undefined;
+                                        try {
+                                            const keys = await generateRSAKeyPair();
+                                            pubKey = await exportPublicKey(keys.publicKey);
+                                            privKey = await exportPrivateKey(keys.privateKey);
+                                        } catch (e) {
+                                            console.error("Key gen failed in setup:", e);
+                                        }
+                                        onSetupComplete(name.trim() || 'User', false, email, currentBookmarks, pubKey, privKey);
                                     }
                                 }}
                                 className="w-full py-5 text-xl font-bold bg-gray-800 text-white rounded-[2rem] hover:bg-black transition shadow-xl"

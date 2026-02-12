@@ -34,15 +34,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     }, [chatter, currentUser, partner]);
 
     // --- Stats Logic ---
+    // --- Stats Logic ---
     const newFlirtsCount = useMemo(() => {
-        // Mock logic: flirts in last 24h or unread? 
-        // For now, just count mentions of 'flirt' context or general recent notes
         return Object.values(chatter).flat().filter(n => n.contextId === 'general-flirt' && n.timestamp > Date.now() - 86400000).length;
     }, [chatter]);
 
-    const inboxCount = 0; // Placeholder until Inbox feature is fully built
-    const chatCount = Object.values(chatter).flat().length;
-    const thoughtsCount = 0; // Placeholder
+    const thoughtsCount = useMemo(() => {
+        return Object.keys(chatter).filter(k => k.startsWith('thread-')).length;
+    }, [chatter]);
 
     // --- Alignment Logic (Migrated from ChemistryGuide) ---
     const alignment = useMemo(() => {
@@ -52,19 +51,31 @@ const Dashboard: React.FC<DashboardProps> = ({
 
         if (!partner) return { sharedLoves, complementary, growth };
 
-        Object.keys(bookmarks).forEach(key => {
+        const allIds = new Set([...Object.keys(bookmarks), ...Object.keys(partnerBookmarks)]);
+
+        allIds.forEach(key => {
             const id = parseInt(key);
             const myMark = bookmarks[id];
             const pMark = partnerBookmarks[id];
             const termName = termsData.find(t => t.id === id)?.name || "Unknown";
 
-            if (!pMark) return;
+            // Strict "One Love/Like + One Unsure"
+            // We interpret 'undefined' as NOT 'unsure' (must be explicitly marked)
+            // Unless user requests otherwise. Current request: "one person is Love or Like the other is Unsure"
+
+            const meLoveLike = myMark === 'love' || myMark === 'like';
+            const pLoveLike = pMark === 'love' || pMark === 'like';
+            const meUnsure = myMark === 'unsure';
+            const pUnsure = pMark === 'unsure';
 
             if (myMark === 'love' && pMark === 'love') {
                 sharedLoves.push(termName);
             } else if ((myMark === 'love' && (pMark === 'like' || pMark === 'work')) || (pMark === 'love' && (myMark === 'like' || myMark === 'work'))) {
                 complementary.push(termName);
-            } else if ((myMark === 'love' && pMark === 'unsure') || (pMark === 'love' && myMark === 'unsure')) {
+            } else if (
+                (meLoveLike && pUnsure) ||
+                (pLoveLike && meUnsure)
+            ) {
                 growth.push(termName);
             }
         });
@@ -82,10 +93,10 @@ const Dashboard: React.FC<DashboardProps> = ({
             {/* Stats Grid - 4 Box Layout */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {[
-                    { label: 'NEW FLIRTS', count: newFlirtsCount, icon: '❤️', tab: 'flirts' },
-                    { label: 'INBOX', count: inboxCount, icon: '📥', tab: 'flirts' },
-                    { label: 'ALIGNMENT', count: alignment.sharedLoves.length + alignment.complementary.length + alignment.growth.length, icon: '💞', tab: 'chemistry' },
-                    { label: 'THOUGHTS', count: thoughtsCount, icon: '📓', tab: 'journal' }
+                    { label: 'RECENT', count: recentActivity.length, icon: '🔔', tab: 'activity' },
+                    { label: 'NEW FLIRTS', count: newFlirtsCount, icon: '💌', tab: 'flirts' },
+                    { label: 'THOUGHTS', count: thoughtsCount, icon: '🧵', tab: 'thoughts' },
+                    { label: 'ALIGNMENT', count: alignment.sharedLoves.length + alignment.complementary.length + alignment.growth.length, icon: '💞', tab: 'chemistry' }
                 ].map((stat, i) => (
                     <button
                         key={i}

@@ -12,9 +12,10 @@ interface SecurePhotoProps {
     sharedKey: CryptoKey | null; // Legacy
     timestamp: number;
     isMine: boolean;
+    privateKey?: CryptoKey | null;
 }
 
-const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, encryptedKey, sharedKey, timestamp, isMine }) => {
+const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, encryptedKey, sharedKey, timestamp, isMine, privateKey }) => {
     const [url, setUrl] = useState<string | null>(null);
     const [isDecrypting, setIsDecrypting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -32,12 +33,11 @@ const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, enc
                     throw new Error("Blind Drop: Key not saved for sender.");
                 }
 
-                // 1. Get My Private Key
-                const myPrivateKey = await getPrivateKey();
-                if (!myPrivateKey) throw new Error("Private Key not found on device.");
+                // 1. Get My Private Key (Props now)
+                if (!privateKey) throw new Error("Private Key not found.");
 
                 // 2. Unwrap the AES Key
-                const aesKey = await unwrapAESKey(encryptedKey, myPrivateKey);
+                const aesKey = await unwrapAESKey(encryptedKey, privateKey);
 
                 // 3. Download Encrypted Blob
                 const blobRef = ref(storage, storagePath);

@@ -34,7 +34,8 @@ export const demoChatter: ChatterNote[] = [
         text: "Hey handsome, thinking about you 😉",
         author: "Jane Doe 1234",
         timestamp: Date.now() - 100000, // 1 min ago
-        reactions: [{ author: 'John Doe 1234', emoji: '❤️' }]
+        reactions: [{ author: 'John Doe 1234', emoji: '❤️' }],
+        expiresAt: Date.now() + 48 * 60 * 60 * 1000
     },
     {
         id: 'note-2',
@@ -42,7 +43,8 @@ export const demoChatter: ChatterNote[] = [
         text: "Can't wait to see you tonight.",
         author: "John Doe 1234",
         timestamp: Date.now() - 90000, // 1.5 min ago
-        reactions: [{ author: 'Jane Doe 1234', emoji: '🔥' }]
+        reactions: [{ author: 'Jane Doe 1234', emoji: '🔥' }],
+        expiresAt: Date.now() + 48 * 60 * 60 * 1000
     },
     {
         id: 'note-3',

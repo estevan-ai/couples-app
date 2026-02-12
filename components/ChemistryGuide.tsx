@@ -60,7 +60,10 @@ const ChemistryGuide: React.FC<ChemistryGuideProps> = ({ currentUser, partner, b
                 sharedLoves.push(termName);
             } else if ((myMark === 'love' && (pMark === 'like' || pMark === 'work')) || (pMark === 'love' && (myMark === 'like' || myMark === 'work'))) {
                 complementary.push(termName);
-            } else if ((myMark === 'love' && pMark === 'unsure') || (pMark === 'love' && myMark === 'unsure')) {
+            } else if (
+                ((myMark === 'love' || myMark === 'like') && pMark === 'unsure') ||
+                ((pMark === 'love' || pMark === 'like') && myMark === 'unsure')
+            ) {
                 growth.push(termName);
             }
         });

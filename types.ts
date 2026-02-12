@@ -30,9 +30,13 @@ export interface User {
   connectId: string;
   isVerifiedAdult: boolean;
   isDemo?: boolean;
-  publicKey?: string;
+  publicKey?: string; // Base64 RSA Public Key
   uid?: string;
   partnerId?: string;
+  partnerName?: string;
+  sharedKeyBase64?: string; // Legacy: Encrypted Shared Key (if no partner) or raw (bad)
+  encryptedSharedKey?: string; // New: Wrapped Shared Key (RSA-OAEP)
+  sharingSettings?: SharingSettings;
 }
 
 export interface Message {

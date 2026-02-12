@@ -66,19 +66,42 @@ export const PushNotificationManager: React.FC<PushManagerProps> = ({ currentUse
     };
 
     return (
-        <div className="p-4 bg-purple-50 rounded-2xl mb-6 border border-purple-100 flex items-center justify-between">
-            <div>
-                <h3 className="font-bold text-purple-900">Push Notifications</h3>
-                <p className="text-xs text-purple-700">Get updates about new flirts and bounties.</p>
-                {status && <p className="text-xs font-bold mt-1">{status}</p>}
+        <div className="p-4 bg-purple-50 rounded-2xl mb-6 border border-purple-100">
+            <div className="flex items-center justify-between mb-4">
+                <div>
+                    <h3 className="font-bold text-purple-900">Push Notifications</h3>
+                    <p className="text-xs text-purple-700">Get updates about new flirts and bounties.</p>
+                </div>
+                <button
+                    onClick={handleEnable}
+                    disabled={loading}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold shadow-sm hover:scale-105 transition disabled:opacity-50"
+                >
+                    {loading ? '...' : 'Enable'}
+                </button>
             </div>
+
+            {status && (
+                <div className="bg-white/50 p-3 rounded-lg text-xs border border-purple-100 mb-2 break-all">
+                    <strong>Status:</strong> {status}
+                </div>
+            )}
+
             <button
-                onClick={handleEnable}
-                disabled={loading}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold shadow-sm hover:scale-105 transition disabled:opacity-50"
+                onClick={() => {
+                    new Notification("Test Notification", {
+                        body: "If you see this, local notifications are working!",
+                        icon: "/Logo-V2.svg"
+                    });
+                }}
+                className="w-full py-2 bg-white text-purple-600 rounded-lg text-xs font-bold border border-purple-200 hover:bg-purple-100 transition mb-2"
             >
-                {loading ? '...' : 'Enable'}
+                🔔 Send Local Test Notification
             </button>
+
+            <p className="text-[10px] text-purple-400 text-center">
+                To test real pushes, use the Firebase Console with the token saved to your profile.
+            </p>
         </div>
     );
 };

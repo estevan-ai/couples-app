@@ -19,12 +19,13 @@ interface BountyBoardProps {
     onUpdateBounty: (id: number | string, updates: Partial<Bounty>) => void;
     onArchiveBounty: (id: number | string) => void;
     onDeleteNote: (id: string) => void;
+    onEditNote: (id: string, text: string) => void;
     highlightedBountyId?: number | string | null;
     partnerBookmarks?: Record<number, Bookmark>;
 }
 
 const BountyBoard: React.FC<BountyBoardProps> = ({
-    bounties, currentUser, onToggleStatus, onClaimBounty, chatter, onAddNote, bookmarks, onAddBounty, onDeleteBounty, onUpdateBounty, onArchiveBounty, onDeleteNote, highlightedBountyId, partnerBookmarks = {}
+    bounties, currentUser, onToggleStatus, onClaimBounty, chatter, onAddNote, bookmarks, onAddBounty, onDeleteBounty, onUpdateBounty, onArchiveBounty, onDeleteNote, onEditNote, highlightedBountyId, partnerBookmarks = {}
 }) => {
     const [activeTab, setActiveTab] = React.useState<'shared' | 'offers' | 'archives'>('shared');
     const [willWorkForTab, setWillWorkForTab] = React.useState<'mine' | 'partner' | 'partner_offers'>('mine');
@@ -119,7 +120,7 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                     <section>
                         <h2 className="text-xl font-serif font-bold text-blue-600 mb-6 flex items-center gap-2">Available <span className="text-xs bg-blue-100 px-2 py-0.5 rounded-full">{availableBounties.length}</span></h2>
                         {availableBounties.length > 0 ? (
-                            <div className="space-y-6">{availableBounties.map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}</div>
+                            <div className="space-y-6">{availableBounties.map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}</div>
                         ) : (
                             <div className="text-center py-20 px-6 bg-white border-2 border-dashed border-gray-100 rounded-[2.5rem]">
                                 <div className="text-4xl mb-4 opacity-20">🎫</div>
@@ -131,7 +132,7 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                     <section>
                         <h2 className="text-xl font-serif font-bold text-orange-600 mb-6 flex items-center gap-2">My To-Do <span className="text-xs bg-orange-100 px-2 py-0.5 rounded-full">{myBounties.length}</span></h2>
                         {myBounties.length > 0 ? (
-                            <div className="space-y-6">{myBounties.map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}</div>
+                            <div className="space-y-6">{myBounties.map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}</div>
                         ) : (
                             <div className="text-center py-20 px-6 bg-white border-2 border-dashed border-gray-100 rounded-[2.5rem]">
                                 <div className="text-4xl mb-4 opacity-20">🎯</div>
@@ -143,7 +144,7 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                         <h2 className="text-xl font-serif font-bold text-green-600 mb-6 flex items-center gap-2">Completed <span className="text-xs bg-green-100 px-2 py-0.5 rounded-full">{doneBounties.length}</span></h2>
                         {doneBounties.length > 0 ? (
                             <div className="space-y-6 opacity-80">
-                                {doneBounties.slice(0, 5).map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}
+                                {doneBounties.slice(0, 5).map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}
                                 {doneBounties.length > 5 && <button onClick={() => setActiveTab('archives')} className="w-full py-3 text-center text-gray-400 text-sm font-bold bg-gray-50 rounded-2xl hover:bg-gray-100 transition">View All {doneBounties.length} Completed</button>}
                             </div>
                         ) : (
@@ -241,7 +242,7 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 opacity-60 grayscale hover:grayscale-0 transition-all duration-500">
                             {visibleArchives.length > 0 ? (
                                 visibleArchives.map(bounty => (
-                                    <BountyCard key={bounty.id} bounty={bounty} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onRepublish={onAddBounty} onDeleteNote={onDeleteNote} isHighlighted={bounty.id === highlightedBountyId || bounty.id.toString() === highlightedBountyId?.toString()} />
+                                    <BountyCard key={bounty.id} bounty={bounty} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onRepublish={onAddBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={bounty.id === highlightedBountyId || bounty.id.toString() === highlightedBountyId?.toString()} />
                                 ))
                             ) : (
                                 <div className="col-span-full text-center py-20 text-gray-400">

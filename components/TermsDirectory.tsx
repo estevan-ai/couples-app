@@ -36,6 +36,7 @@ interface TermsDirectoryProps {
     partnerBookmarks?: Record<number, Bookmark>;
     partnerName?: string;
     onDeleteNote?: (id: string) => void;
+    onEditNote?: (id: string, newText: string) => void;
     onDeleteBounty: (id: number | string) => void;
     onAddTerm?: (term: any) => void;
     customTermCount?: number;
@@ -44,7 +45,9 @@ interface TermsDirectoryProps {
     onClearInitialTag?: () => void;
     initialSearchTerm?: string | null;
     onClearInitialSearch?: () => void;
+
     currentUser?: import('../types').User;
+    onReflect?: (text: string) => void;
 }
 
 const TermsDirectory: React.FC<TermsDirectoryProps> = ({
@@ -58,6 +61,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
     partnerBookmarks,
     partnerName,
     onDeleteNote,
+    onEditNote,
     onDeleteBounty,
     onAddTerm,
     customTermCount = 0,
@@ -66,7 +70,9 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
     onClearInitialTag,
     initialSearchTerm,
     onClearInitialSearch,
-    currentUser
+
+    currentUser,
+    onReflect
 }) => {
     const [isPanelOpen, setIsPanelOpen] = useState(false);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -322,7 +328,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                             </button>
                             {!collapsedSections['love'] && (
                                 <div className={`grid gap-6 animate-in slide-in-from-top-2 duration-300 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                    {displayData.loved.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} currentUser={currentUser} />)}
+                                    {displayData.loved.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} onEditNote={onEditNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} currentUser={currentUser} onReflect={onReflect} />)}
                                 </div>
                             )}
                         </section>
@@ -339,7 +345,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                             </button>
                             {!collapsedSections['like'] && (
                                 <div className={`grid gap-6 animate-in slide-in-from-top-2 duration-300 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                    {displayData.liked.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} />)}
+                                    {displayData.liked.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} onEditNote={onEditNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} onReflect={onReflect} />)}
                                 </div>
                             )}
                         </section>
@@ -356,7 +362,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                             </button>
                             {!collapsedSections['work'] && (
                                 <div className={`grid gap-6 animate-in slide-in-from-top-2 duration-300 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                    {displayData.work.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} />)}
+                                    {displayData.work.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} onEditNote={onEditNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} onReflect={onReflect} />)}
                                 </div>
                             )}
                         </section>
@@ -373,7 +379,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                             </button>
                             {!collapsedSections['unsure'] && (
                                 <div className={`grid gap-6 opacity-80 animate-in slide-in-from-top-2 duration-300 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                    {displayData.unsure.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} />)}
+                                    {displayData.unsure.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} onEditNote={onEditNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} onReflect={onReflect} />)}
                                 </div>
                             )}
                         </section>
@@ -388,7 +394,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                         )}
                         {!collapsedSections['explore'] && (
                             <div className={`grid gap-6 animate-in slide-in-from-top-2 duration-300 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                {displayData.others.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} currentUser={currentUser} />)}
+                                {displayData.others.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} partnerBookmarks={partnerBookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} onEditNote={onEditNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} isHighlighted={term.id === highlightedTermId} currentUser={currentUser} onReflect={onReflect} />)}
                             </div>
                         )}
                     </section>
@@ -406,7 +412,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                                 <div className="animate-in slide-in-from-top-2 duration-300 pt-4">
                                     <p className="text-xs text-gray-400 mb-6 font-bold uppercase tracking-widest">These items are off the table for now.</p>
                                     <div className={`grid gap-6 opacity-60 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500 ${viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
-                                        {displayData.skipped.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} currentUser={currentUser} />)}
+                                        {displayData.skipped.map(term => <TermCard key={term.id} term={term} bookmarks={bookmarks} onBookmarkToggle={onLocalBookmarkToggle} onMakeFavor={handleOpenBountyModal} chatter={chatter} onAddNote={onAddNote} onAIDeepDive={handleOpenAIDive} isDemo={isDemo} onDeleteNote={onDeleteNote} onEditNote={onEditNote} viewMode={viewMode} onTagClick={handleTagToggle} selectedTags={filters.tags} currentUser={currentUser} onReflect={onReflect} />)}
                                     </div>
                                 </div>
                             ) : (

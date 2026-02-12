@@ -12,12 +12,14 @@ interface TermCardProps {
     onAIDeepDive: (term: Term) => void;
     isDemo?: boolean;
     onDeleteNote?: (id: string) => void;
+    onEditNote?: (id: string, newText: string) => void;
     viewMode?: 'grid' | 'list';
     onTagClick?: (tag: string) => void;
     selectedTags?: Set<string>;
     isHighlighted?: boolean;
     onFocus?: (term: Term) => void;
     currentUser?: import('../types').User;
+    onReflect?: (text: string) => void;
 }
 
 const categoryColors: { [key: string]: string } = {
@@ -29,8 +31,8 @@ const categoryColors: { [key: string]: string } = {
 };
 
 const TermCard: React.FC<TermCardProps> = ({
-    term, bookmarks, partnerBookmarks, chatter, onBookmarkToggle, onMakeFavor, onAddNote, onAIDeepDive, onDeleteNote,
-    isDemo = false, viewMode = 'grid', onTagClick, selectedTags, isHighlighted, onFocus, currentUser
+    term, bookmarks, partnerBookmarks, chatter, onBookmarkToggle, onMakeFavor, onAddNote, onAIDeepDive, onDeleteNote, onEditNote,
+    isDemo = false, viewMode = 'grid', onTagClick, selectedTags, isHighlighted, onFocus, currentUser, onReflect
 }) => {
     const [showChatter, setShowChatter] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false); // For list view
@@ -297,6 +299,7 @@ const TermCard: React.FC<TermCardProps> = ({
                     <span className="text-base">🎁</span>
                     <span>Favor</span>
                 </button>
+
 
                 {/* Will Do Button */}
                 <button

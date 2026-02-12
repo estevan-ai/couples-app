@@ -10,9 +10,10 @@ interface SecureAudioProps {
     encryptedKey?: string;
     sharedKey: CryptoKey | null;
     isMine: boolean;
+    privateKey?: CryptoKey | null;
 }
 
-const SecureAudio: React.FC<SecureAudioProps> = ({ path, ivStr, encryptedKey, sharedKey, isMine }) => {
+const SecureAudio: React.FC<SecureAudioProps> = ({ path, ivStr, encryptedKey, sharedKey, isMine, privateKey }) => {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const audioRef = useRef<HTMLAudioElement>(null);
@@ -47,10 +48,11 @@ const SecureAudio: React.FC<SecureAudioProps> = ({ path, ivStr, encryptedKey, sh
 
                 if (isMine) throw new Error("Blind Drop: Cannot decrypt my own sent ZK audio without local storage?");
 
-                const myPrivateKey = await getPrivateKey();
-                if (!myPrivateKey) throw new Error("No private key");
+                if (isMine) throw new Error("Blind Drop: Cannot decrypt my own sent ZK audio without local storage?");
 
-                const aesKey = await unwrapAESKey(encryptedKey, myPrivateKey);
+                if (!privateKey) throw new Error("No private key provided.");
+
+                const aesKey = await unwrapAESKey(encryptedKey, privateKey);
                 const storageRef = ref(storage, path);
                 const encryptedBlob = await getBlob(storageRef);
                 blob = await decryptBlob(encryptedBlob, aesKey, stringToIv(ivStr || ''));

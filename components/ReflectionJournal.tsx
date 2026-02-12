@@ -8,9 +8,12 @@ interface ReflectionJournalProps {
     entries: JournalEntry[];
     onAddEntry: (entry: JournalEntry) => void;
     currentUser: User;
+    sharedKey: CryptoKey | null;
+    initialText?: string;
+    onClearInitialText?: () => void;
 }
 
-const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEntry, currentUser }) => {
+const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEntry, currentUser, sharedKey, initialText, onClearInitialText }) => {
     const [isRecording, setIsRecording] = useState(false);
     const [inputText, setInputText] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -26,6 +29,24 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages, isProcessing]);
+
+    // Handle Initial Text (Shared from Thoughts)
+    useEffect(() => {
+        if (initialText && chat) {
+            // Add system context about the shared thought
+            const contextMsg = `I'd like to reflect on this thought: "${initialText}"`;
+            setMessages(prev => [...prev, { role: 'user', text: contextMsg }]);
+
+            // Trigger AI response
+            setIsProcessing(true);
+            chat.sendMessage({ message: contextMsg }).then((response: any) => {
+                const modelText = response.text || "";
+                setMessages(prev => [...prev, { role: 'model', text: modelText }]);
+                setIsProcessing(false);
+                if (onClearInitialText) onClearInitialText();
+            }).catch(() => setIsProcessing(false));
+        }
+    }, [initialText, chat]); // Depend on chat being ready
 
     useEffect(() => {
         const apiKey = import.meta.env.VITE_GOOGLE_AI_KEY;
@@ -49,7 +70,7 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
     `;
 
         const newChat = ai.chats.create({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-1.5-flash-001',
             history: [
                 { role: 'user', parts: [{ text: `INSTRUCTION: ${systemPrompt}` }] },
                 { role: 'model', parts: [{ text: `Understood. Hi ${currentUser.name}. I am your Reflection Coach. I'm ready to listen and help you explore your connection journey.` }] }

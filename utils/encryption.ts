@@ -45,7 +45,7 @@ export async function decryptBlob(encryptedBlob: Blob, key: CryptoKey, iv: Uint8
     const data = await encryptedBlob.arrayBuffer();
 
     const decryptedBuffer = await window.crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: iv },
+        { name: "AES-GCM", iv: iv as any }, // Cast to any to avoid BufferSource mismatch
         key,
         data
     );
@@ -109,29 +109,23 @@ export async function importPrivateKey(pem: string): Promise<CryptoKey> {
 
 // Wrap (Encrypt) an AES Key using a Public RSA Key
 export async function wrapAESKey(aesKey: CryptoKey, publicKey: CryptoKey): Promise<string> {
-    // Export raw AES bytes
     const rawAesKey = await window.crypto.subtle.exportKey("raw", aesKey);
-
-    // Encrypt with RSA Public Key
     const encryptedKeyBuffer = await window.crypto.subtle.encrypt(
         { name: "RSA-OAEP" },
         publicKey,
         rawAesKey
     );
-
     return arrayBufferToBase64(encryptedKeyBuffer);
 }
 
 // Unwrap (Decrypt) an AES Key using a Private RSA Key
 export async function unwrapAESKey(encryptedKeyBase64: string, privateKey: CryptoKey): Promise<CryptoKey> {
     const encryptedKeyBuffer = base64ToArrayBuffer(encryptedKeyBase64);
-
     const decryptedRawKey = await window.crypto.subtle.decrypt(
         { name: "RSA-OAEP" },
         privateKey,
         encryptedKeyBuffer
     );
-
     return await window.crypto.subtle.importKey(
         "raw",
         decryptedRawKey,
@@ -141,9 +135,7 @@ export async function unwrapAESKey(encryptedKeyBase64: string, privateKey: Crypt
     );
 }
 
-
-// --- 4. Helpers ---
-
+// Helpers
 export function arrayBufferToBase64(buffer: ArrayBuffer): string {
     let binary = '';
     const bytes = new Uint8Array(buffer);
@@ -161,7 +153,7 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
     for (let i = 0; i < len; i++) {
         bytes[i] = binary_string.charCodeAt(i);
     }
-    return bytes.buffer;
+    return bytes.buffer as ArrayBuffer; // Ensure it treats underlying buffer as ArrayBuffer
 }
 
 // Legacy Helpers (from previous implementation)
@@ -183,8 +175,35 @@ export async function importKeyOld(keyStr: string): Promise<CryptoKey> {
     );
 }
 export function ivToString(iv: Uint8Array): string {
-    return arrayBufferToBase64(iv);
+    return arrayBufferToBase64(iv.buffer as ArrayBuffer); // Fix type error
 }
 export function stringToIv(ivStr: string): Uint8Array {
     return new Uint8Array(base64ToArrayBuffer(ivStr));
+}
+
+// --- 4. Sync Code Logic (PBKDF2) ---
+
+// Derive a strong key from a short code (6 digits) + Salt
+export async function deriveKeyFromCode(code: string, salt: Uint8Array): Promise<CryptoKey> {
+    const enc = new TextEncoder();
+    const keyMaterial = await window.crypto.subtle.importKey(
+        "raw",
+        enc.encode(code),
+        { name: "PBKDF2" },
+        false,
+        ["deriveKey"]
+    );
+
+    return await window.crypto.subtle.deriveKey(
+        {
+            name: "PBKDF2",
+            salt: salt,
+            iterations: 100000,
+            hash: "SHA-256"
+        },
+        keyMaterial,
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+    );
 }

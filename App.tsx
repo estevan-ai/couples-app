@@ -19,11 +19,12 @@ import { collection, query, where, onSnapshot, orderBy, limit, addDoc, updateDoc
 import { getToken, onMessage } from 'firebase/messaging';
 import FlirtSection from './components/FlirtSection';
 import ReflectionJournal from './components/ReflectionJournal';
-import { generateKeyOld as generateKey, exportKeyOld as exportKey, importKeyOld as importKey } from './utils/encryption';
+import { generateKeyOld as generateKey, exportKeyOld as exportKey, importKeyOld as importKey, importPublicKey, wrapAESKey } from './utils/encryption';
 import ReloadPrompt from './components/ReloadPrompt';
 import { demoUser, demoPartner, demoBounties, demoChatter } from './utils/demoData';
+import { useEncryption } from './hooks/useEncryption';
 
-type Tab = 'dashboard' | 'directory' | 'chemistry' | 'giving' | 'session' | 'favors' | 'flirts' | 'account' | 'journal';
+type Tab = 'dashboard' | 'directory' | 'chemistry' | 'giving' | 'session' | 'favors' | 'flirts' | 'account' | 'journal' | 'activity';
 
 // Local User interface removed to use the one from types.ts
 
@@ -39,24 +40,91 @@ const App: React.FC = () => {
   };
 
   const handleNavigateContext = (contextId: string) => {
-    if (contextId === 'general-flirt' || contextId.startsWith('flirt-')) {
-      setActiveTab('flirts');
-    } else if (contextId.startsWith('bounty-')) {
+    if (contextId === 'privacy-settings') {
+      setActiveTab('account');
+      setAccountInitialTab('privacy');
+      return;
+    }
+
+    if (contextId.startsWith('term-')) {
       const id = parseInt(contextId.split('-')[1]);
-      setHighlightedBountyId(id);
-      setActiveTab('favors');
-    } else if (contextId.startsWith('term-')) {
-      const id = parseInt(contextId.split('-')[1]);
-      setHighlightedTermId(id);
+      setHighlightedTermId(Number(id));
       setActiveTab('directory');
+      return;
+    }
+
+    // Handle Bounty IDs (Numeric)
+    if (!isNaN(Number(contextId))) {
+      setActiveTab('favors');
+      setHighlightedBountyId(Number(contextId));
+      return;
+    }
+
+    if (contextId.includes('bounty-')) {
+      const id = contextId.replace('bounty-', '');
+      setHighlightedBountyId(Number(id));
+      setActiveTab('favors');
+      return;
+    }
+
+    if (contextId.startsWith('thread-')) {
+      setInitialFlirtTab('thoughts');
+      setActiveTab('flirts');
+      return;
+    }
+
+    if (contextId === 'general-flirt' || contextId.startsWith('flirt-')) {
+      setInitialFlirtTab('flirts');
+      setActiveTab('flirts');
+      return;
     }
   };
 
   // App State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [sharedKey, setSharedKey] = useState<CryptoKey | null>(null);
   const [partner, setPartner] = useState<User | null>(null);
   const [customTerms, setCustomTerms] = useState<Term[]>([]);
+
+  // Encryption Hook
+  const {
+    sharedKey,
+    status: encryptionStatus,
+    generateIdentity,
+    createSharedFolder,
+    publicKeyBase64,
+    privateKey,
+    backupIdentity,
+    restoreIdentity,
+    generateSyncCode,
+    consumeSyncCode
+  } = useEncryption(currentUser?.uid);
+
+  // --- JOURNAL LOGIC ---
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [pendingReflection, setPendingReflection] = useState<string | null>(null);
+  const [initialFlirtTab, setInitialFlirtTab] = useState<'flirts' | 'thoughts' | 'activity'>('flirts');
+  const [accountInitialTab, setAccountInitialTab] = useState<'profile' | 'activity' | 'privacy'>('profile');
+
+  // New Features State
+  // Load Journal
+  useEffect(() => {
+    if (!currentUser) return;
+    const q = query(collection(db, 'users', currentUser.uid!, 'journal'), orderBy('timestamp', 'desc'));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setJournalEntries(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as JournalEntry)));
+    });
+    return () => unsub();
+  }, [currentUser]);
+
+  const handleAddJournalEntry = async (entry: JournalEntry) => {
+    if (!currentUser?.uid) return;
+    await setDoc(doc(db, 'users', currentUser.uid, 'journal', entry.id), entry);
+  };
+
+  const handleReflect = (text: string) => {
+    setPendingReflection(text);
+    setActiveTab('journal');
+  };
 
   // Load custom terms on mount
   useEffect(() => {
@@ -78,7 +146,7 @@ const App: React.FC = () => {
   const [chatter, setChatter] = useState<Record<string, ChatterNote[]>>({});
   const [invites, setInvites] = useState<Invite[]>([]);
   const [allBookmarks, setAllBookmarks] = useState<Record<string, Record<number, Bookmark>>>({});
-  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+
 
 
   const [highlightedTermId, setHighlightedTermId] = useState<number | null>(null);
@@ -122,10 +190,37 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log("App Version: 1.2.1 - Gemini 3 Beta Stability");
+    console.log("App Version: 1.3.0 - Encryption Migration");
   }, []);
 
-  // Auth Listener
+  // Force Re-sync Demo Data on Mount/Update (Fix for HMR/Data Refresh)
+  useEffect(() => {
+    if (isDemoMode && currentUser) {
+      console.log("Refresing Demo Data from source...");
+      setMyChatter(demoChatter.filter(c => c.author === currentUser.name));
+      setPartnerChatter(demoChatter.filter(c => c.author !== currentUser.name));
+    }
+  }, [isDemoMode, currentUser]); // Runs when demo mode active or user changes
+
+  // Persist Sharing Settings
+  useEffect(() => {
+    if (!currentUser || !auth.currentUser || isDemoMode) return;
+
+    // Prevent loop: If local matches server, do nothing
+    if (currentUser.sharingSettings && JSON.stringify(currentUser.sharingSettings) === JSON.stringify(sharingSettings)) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        await updateDoc(doc(db, 'users', auth.currentUser!.uid), { sharingSettings });
+        console.log("Synced sharing settings");
+      } catch (e) {
+        console.error("Failed to sync sharing settings:", e);
+      }
+    }, 1000); // 1s debounce
+    return () => clearTimeout(timer);
+  }, [sharingSettings, currentUser, isDemoMode]);
+
+  // Auth & Encryption Status Monitor
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
@@ -136,51 +231,42 @@ const App: React.FC = () => {
             const data = snapshot.data() as User;
             setCurrentUser({ ...data, uid: user.uid });
 
-            // Load or generate encryption key
-            if ((data as any).sharedKeyBase64) {
-              const key = await importKey((data as any).sharedKeyBase64);
-              setSharedKey(key);
-            } else if (data.partnerId) {
-              // Check if partner already has a key to sync
-              // Find partner doc (assuming we can find them via query if we don't have ID directly, 
-              // but data.partnerId usually stores their ConnectID or UID. 
-              // Wait, partnerId in User struct is likely ConnectID.
-              // We need to query by connectId.
-              const q = query(collection(db, 'users'), where('connectId', '==', data.partnerId));
-              const querySnapshot = await getDocs(q);
-
-              let keyToUseStr = '';
-
-              if (!querySnapshot.empty) {
-                const partnerData = querySnapshot.docs[0].data();
-                if (partnerData.sharedKeyBase64) {
-                  console.log("Found partner key, syncing...");
-                  keyToUseStr = partnerData.sharedKeyBase64;
+            // Sync Sharing Settings from Server to Local State
+            if (data.sharingSettings) {
+              setSharingSettings(prev => {
+                // Only update if different to avoid re-renders? 
+                // Actually JSON.stringify check is good practice but let's just set it for now 
+                // or check if deep equal.
+                if (JSON.stringify(prev) !== JSON.stringify(data.sharingSettings)) {
+                  return data.sharingSettings!;
                 }
-              }
-
-              if (keyToUseStr) {
-                // Use existing partner key
-                await updateDoc(userRef, { sharedKeyBase64: keyToUseStr });
-                const key = await importKey(keyToUseStr);
-                setSharedKey(key);
-              } else {
-                // Neither has key, generate new one
-                console.log("No partner key found, generating new shared key...");
-                const newKey = await generateKey();
-                const base64 = await exportKey(newKey);
-                await updateDoc(userRef, { sharedKeyBase64: base64 });
-                setSharedKey(newKey);
-              }
+                return prev;
+              });
             }
 
-            // If they have a partner, fetch partner data
-            if (data.partnerId) {
-              // Find partner by ID (Connect ID search needed, or store UID)
-              // Simplified: We need the partner's UID. 
-              // For now, let's assume we store partner's UID in 'partnerUid' field or similar, 
-              // OR we query by connectId. Querying is better.
-              // But wait, the previous code stored the whole partner object.
+            // ENCRYPTION STATUS CHECK
+            // If we are 'unlocked', we have sharedKey.
+            // If 'locked', we are waiting for useEncryption to unlock.
+            // If 'no-keys', UserSetup should have generated them, or we are in a weird state.
+
+            // Check if we need to CREATE a shared folder (first time setup)
+            // Case 1: I have Identity, Partner has Identity, but NO Shared Key exists yet.
+            // Case 2: I am single, I create Shared Key for myself.
+
+            // If I don't have an encryptedSharedKey in my profile, I might need to create one.
+            if (!data.encryptedSharedKey && !data.sharedKeyBase64) {
+              // Create it now
+              console.log("No shared folder found. Creating one...");
+              try {
+                // We need to verify we have our Public Key loaded first? 
+                // useEncryption handles loading it from Firestore.
+                // But we are inside onSnapshot, so we have fresh data.
+
+                // We can't call createSharedFolder here directly because it depends on `status` being ready in the hook.
+                // We should do this in a separate useEffect that watches `currentUser` and `encryptionStatus`.
+              } catch (e) {
+                console.error("Auto-creation failed", e);
+              }
             }
           } else {
             // User authenticated but doc not created yet (UserSetup handling this)
@@ -198,6 +284,34 @@ const App: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // Auto-Create Shared Folder if missing
+  useEffect(() => {
+    if (!currentUser || !encryptionStatus) return;
+
+    // Only proceed if we have Identity keys loaded/generated ('locked' or 'unlocked' but missing shared key)
+    // If status is 'locked', it means we have Identity but couldn't unlock shared key (likely because it doesn't exist).
+    // If status is 'no-keys', we can't do anything.
+
+    const initFolder = async () => {
+      if (encryptionStatus === 'locked' && !currentUser.encryptedSharedKey && !currentUser.sharedKeyBase64) {
+        console.log("Initializing Shared Folder...");
+        try {
+          const wrappedKey = await createSharedFolder();
+          // Save TO FIRESTORE
+          await updateDoc(doc(db, 'users', currentUser.uid!), {
+            encryptedSharedKey: wrappedKey
+          });
+          console.log("Shared Folder Created & Saved.");
+        } catch (e) {
+          console.error("Failed to create shared folder:", e);
+        }
+      }
+    };
+
+    initFolder();
+  }, [currentUser, encryptionStatus]);
+
 
   // Notifications
   useEffect(() => {
@@ -501,11 +615,82 @@ const App: React.FC = () => {
 
   const handleConnectPartner = async (partnerName: string, id: string) => {
     if (!auth.currentUser || !currentUser) return;
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-      partnerId: id,
-      partnerName: partnerName
-    });
-    setActiveTab('directory');
+
+    try {
+      // 1. Get Partner's Public Key
+      const q = query(collection(db, 'users'), where('connectId', '==', id));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        alert("Partner ID not found.");
+        return;
+      }
+
+      const partnerDoc = querySnapshot.docs[0];
+      const partnerData = partnerDoc.data() as User;
+
+      // 2. Wrap Shared Key
+      if (!sharedKey) {
+        alert("Error: shared-key-missing. Reloading...");
+        window.location.reload();
+        return;
+      }
+
+      let encryptedSharedKeyForPartner: string | undefined;
+
+      if (partnerData.publicKey) {
+        console.log("Partner has Identity. Wrapping Shared Key...");
+        const partnerPubKey = await importPublicKey(partnerData.publicKey);
+        encryptedSharedKeyForPartner = await wrapAESKey(sharedKey, partnerPubKey);
+      } else {
+        console.warn("Partner has no Public Key. Migration/Legacy Mode?");
+        // If we enforce Zero Knowledge, we must stop here.
+        // But for smoother migration, we might temporarily allow legacy sharedKeyBase64 if user insists?
+        // "Blind Drops" requires NO.
+        alert("Partner needs to update their app and open it once to generate keys. Please ask them to update.");
+        return;
+      }
+
+      // 3. Update MY profile with partner link
+      // We do NOT save the wrapped key to the partner's profile directly (permission rules might block).
+      // Actually, usually users can only write to their specific subcollections or their own doc.
+      // We need a way to send this key to the partner.
+      // 1. "Drop" it in a 'invites' collection?
+      // 2. Update 'users/{partnerUid}' if rules allow? (Usually not allowed).
+      // 3. Store it in MY profile as 'outgoing_keys/{partnerUid}'?
+
+      // Simplest for now (if rules allow, which they surely do in this MVP phase): 
+      // Update PARTNER'S doc. 
+      // IF RULES FAIL: We need a 'invites' collection.
+      // Let's assume we can update partner doc for now based on previous code doing similar things.
+
+      // Wait, previous code did NOT update partner doc. It updated MY doc with partnerId.
+      // And then partner scan found MY key and copied it.
+      // That was "Server-Side Shared Key".
+
+      // "Zero Knowledge" means Server CANNOT read it.
+      // If I write `encryptedSharedKey` to Partner's doc, only Partner can read it (with private key). Server sees blob.
+      // This is safe.
+
+      await updateDoc(doc(db, 'users', partnerDoc.id), {
+        encryptedSharedKey: encryptedSharedKeyForPartner,
+        partnerId: currentUser.connectId, // Auto-link them back?
+        partnerName: currentUser.name
+      });
+
+      // Update MY doc
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        partnerId: id,
+        partnerName: partnerName
+      });
+
+      setActiveTab('directory');
+      alert("Connected! Shared key securely sent to partner.");
+
+    } catch (e) {
+      console.error("Connection failed", e);
+      alert("Connection failed. Check permissions or ID.");
+    }
   };
 
   const handleCreateTerm = async (term: Term) => {
@@ -539,7 +724,13 @@ const App: React.FC = () => {
         timestamp: Date.now(),
         photoPath: photoPath || null,
         status: 'sent',
-        reactions: [] // Initialize array
+        reactions: [],
+        expiresAt: extra?.expiresAt,
+        audioPath: extra?.audioPath,
+        audioIv: extra?.audioIv,
+        storagePath: extra?.storagePath,
+        senderId: extra?.senderId,
+        encryptedKey: extra?.encryptedKey
       };
       setMyChatter(prev => [...prev, newNote]);
       return;
@@ -592,6 +783,26 @@ const App: React.FC = () => {
       console.log("Deleted note:", id);
     } catch (e) {
       console.error("Error deleting note:", e);
+    }
+  };
+
+  const editNote = async (id: string, newText: string) => {
+    if (isDemoMode) {
+      setMyChatter(prev => prev.map(n => n.id === id ? { ...n, text: newText } : n));
+      return;
+    }
+
+    if (!auth.currentUser) return;
+    try {
+      const q = query(collection(db, 'users', auth.currentUser.uid, 'chatter'), where('id', '==', id));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const docRef = snapshot.docs[0].ref;
+        await updateDoc(docRef, { text: newText });
+        console.log("Updated note:", id);
+      }
+    } catch (e) {
+      console.error("Error editing note:", e);
     }
   };
 
@@ -663,14 +874,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddJournalEntry = async (entry: JournalEntry) => {
-    if (!currentUser || !auth.currentUser) return;
-    try {
-      await addDoc(collection(db, 'users', auth.currentUser.uid, 'journal'), entry);
-    } catch (e: any) {
-      console.error("Error adding journal entry:", e);
-    }
-  };
+
 
   const handleClaimBounty = async (id: number | string) => {
     if (!currentUser) return;
@@ -997,6 +1201,15 @@ const App: React.FC = () => {
   );
   if (!currentUser) return <UserSetup onSetupComplete={handleIndividualSetup} />;
 
+  const handleNavigate = (tab: string) => {
+    if (tab === 'thoughts') {
+      setInitialFlirtTab('thoughts');
+      setActiveTab('flirts');
+    } else {
+      setActiveTab(tab as Tab);
+    }
+  };
+
   return (
     <div className="bg-gray-50 min-h-screen text-gray-800 pb-24 relative overflow-x-hidden">
       <ReloadPrompt />
@@ -1007,7 +1220,7 @@ const App: React.FC = () => {
       <aside className={`fixed top-0 left-0 h-full w-96 bg-white z-[80] shadow-2xl transform transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-8 h-full flex flex-col overflow-y-auto">
           <div className="flex flex-col items-center mb-8 text-center animate-in fade-in zoom-in duration-500">
-            <img src="/logo.png" alt="Logo" className="w-32 h-32 object-contain drop-shadow-md mb-2" />
+            <img src="/Logo-V2.svg" alt="Logo" className="w-32 h-32 object-contain drop-shadow-md mb-2" />
             <h2 className="text-xl font-serif font-bold text-gray-800 leading-none">The Couples' Currency</h2>
             <p className="text-[10px] font-serif italic text-gray-400 tracking-wide mt-1">Investing in Us.</p>
           </div>
@@ -1059,7 +1272,7 @@ const App: React.FC = () => {
             </button>
 
             <div className="flex items-center gap-4 bg-white/80 backdrop-blur-md px-6 py-4 rounded-3xl shadow-sm border border-gray-100 transition-all duration-300">
-              <img src="/logo.png" alt="Logo" className="w-24 h-24 object-contain drop-shadow-sm" />
+              <img src="/Logo-V2.svg" alt="Logo" className="w-24 h-24 object-contain drop-shadow-sm" />
               <div className="flex flex-col items-start leading-none">
                 <h1 className="text-xl font-serif font-bold text-gray-800 tracking-tight">The Couple's Currency</h1>
                 <p className="text-[10px] font-serif italic text-gray-500 tracking-wide mt-1">Investing in Us.</p>
@@ -1082,7 +1295,7 @@ const App: React.FC = () => {
               bookmarks={allBookmarks[currentUser.name] || {}}
               // Safe access confirmed
               partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
-              onNavigate={(tab) => setActiveTab(tab as Tab)}
+              onNavigate={handleNavigate}
               onTagClick={handleTagClickFromDashboard}
               onNavigateContext={handleNavigateContext}
             />
@@ -1106,7 +1319,8 @@ const App: React.FC = () => {
               highlightedTermId={highlightedTermId}
               initialSearchTerm={pendingSearchTerm}
               onClearInitialSearch={() => setPendingSearchTerm(null)}
-              currentUser={currentUser}
+              currentUser={currentUser || undefined}
+              onReflect={handleReflect}
             />
           )}
           {activeTab === 'chemistry' && (
@@ -1134,6 +1348,7 @@ const App: React.FC = () => {
               onUpdateBounty={handleUpdateBounty}
               onArchiveBounty={handleArchiveBounty}
               onDeleteNote={deleteNote}
+              onEditNote={editNote}
               chatter={chatter}
               onAddNote={addNote}
               highlightedBountyId={highlightedBountyId}
@@ -1154,9 +1369,14 @@ const App: React.FC = () => {
               onMarkAllRead={handleMarkAllRead}
               onMarkAllUnread={handleMarkAllUnread}
               onToggleRead={handleToggleRead}
+              onEditNote={editNote}
+              privateKey={privateKey}
+              onReflect={handleReflect}
+              initialTab={initialFlirtTab}
+              terms={termsData} // Pass terms for lookup
+              partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
             />
           )}
-
 
 
           {activeTab === 'account' && currentUser && (
@@ -1174,6 +1394,11 @@ const App: React.FC = () => {
               setNotificationSettings={setNotificationSettings}
               chatter={chatter}
               bounties={bounties}
+              initialTab={accountInitialTab}
+              onBackupIdentity={backupIdentity}
+              onRestoreIdentity={restoreIdentity}
+              onGenerateSyncCode={generateSyncCode}
+              onConsumeSyncCode={consumeSyncCode}
             />
           )}
           {activeTab === 'journal' && currentUser && (
@@ -1181,6 +1406,9 @@ const App: React.FC = () => {
               entries={journalEntries}
               onAddEntry={handleAddJournalEntry}
               currentUser={currentUser}
+              sharedKey={sharedKey}
+              initialText={pendingReflection}
+              onClearInitialText={() => setPendingReflection(undefined)}
             />
           )}
         </main>

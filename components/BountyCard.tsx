@@ -15,11 +15,12 @@ interface BountyCardProps {
     onArchive?: (id: number | string) => void;
     onRepublish?: (bountyData: Omit<Bounty, 'id' | 'status' | 'postedBy' | 'claimedBy'>) => void;
     onDeleteNote: (id: string) => void;
+    onEditNote: (id: string, text: string) => void;
     isHighlighted?: boolean;
 }
 
 const BountyCard: React.FC<BountyCardProps> = ({
-    bounty, currentUser, chatter, onToggleStatus, onClaim, onAddNote, onDelete, onUpdate, onArchive, onRepublish, onDeleteNote, isHighlighted
+    bounty, currentUser, chatter, onToggleStatus, onClaim, onAddNote, onDelete, onUpdate, onArchive, onRepublish, onDeleteNote, onEditNote, isHighlighted
 }) => {
     const [showChatter, setShowChatter] = useState(false);
     const [noteInput, setNoteInput] = useState('');
@@ -214,11 +215,23 @@ const BountyCard: React.FC<BountyCardProps> = ({
                                     {notes[notes.length - 1].author === currentUser.name && (
                                         <div className="flex items-center gap-1 ml-2">
                                             {editingNoteId === (notes[notes.length - 1].firestoreId || notes[notes.length - 1].id) ? (
-                                                <>
+                                                <div className="flex gap-1 items-center">
+                                                    <input
+                                                        className="text-xs border rounded px-1 py-0.5 w-full min-w-[200px]"
+                                                        defaultValue={notes[notes.length - 1].text}
+                                                        autoFocus
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                onEditNote(notes[notes.length - 1].firestoreId || notes[notes.length - 1].id, e.currentTarget.value);
+                                                                setEditingNoteId(null);
+                                                            }
+                                                            if (e.key === 'Escape') setEditingNoteId(null);
+                                                        }}
+                                                    />
                                                     <button
                                                         onClick={() => onDeleteNote(notes[notes.length - 1].firestoreId || notes[notes.length - 1].id)}
-                                                        className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded hover:bg-red-100 transition"
-                                                        title="Confirm Delete"
+                                                        className="text-[10px] font-bold text-red-500 bg-red-50 px-2 py-0.5 rounded hover:bg-red-100 transition whitespace-nowrap"
+                                                        title="Delete"
                                                     >
                                                         Delete
                                                     </button>
@@ -229,7 +242,7 @@ const BountyCard: React.FC<BountyCardProps> = ({
                                                     >
                                                         ✕
                                                     </button>
-                                                </>
+                                                </div>
                                             ) : (
                                                 <button
                                                     onClick={() => setEditingNoteId(notes[notes.length - 1].firestoreId || notes[notes.length - 1].id)}

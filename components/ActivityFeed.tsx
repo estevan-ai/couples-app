@@ -32,7 +32,7 @@ const ActivityFeed: React.FC<ActivityFeedProps> = ({ activity, onNavigateContext
                         {/* Read Toggle Overlay/Button */}
                         <div className="flex items-start gap-4">
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl shrink-0 ${isReaction ? 'bg-red-100 text-red-600' : (item.contextId.startsWith('term-') ? 'bg-blue-100 text-blue-600' : 'bg-pink-100 text-pink-600')}`}>
-                                {isReaction ? '❤️' : (item.contextId.startsWith('term-') ? '📖' : (item.contextId.startsWith('thread-') ? '🧵' : '✨'))}
+                                {isReaction ? '❤️' : (item.contextId.startsWith('term-') ? '📖' : (item.contextId.startsWith('thread-') ? '💭' : '✨'))}
                             </div>
                             <div className="flex-grow">
                                 <div className="flex justify-between items-start">
