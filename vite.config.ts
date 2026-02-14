@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt',
+      registerType: 'autoUpdate', // Force critical updates immediately
       includeAssets: ['Logo-V2.svg', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
         name: "The Couple's Currency",

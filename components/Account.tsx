@@ -26,11 +26,14 @@ interface AccountProps {
     onRestoreIdentity?: (pem: string) => Promise<boolean>;
     onGenerateSyncCode?: () => Promise<string>;
     onConsumeSyncCode?: (code: string) => Promise<boolean>;
+    onResetEncryption?: () => void;
+    encryptionStatus?: 'locked' | 'unlocked' | 'initializing' | 'no-keys' | 'broken-identity';
+    onUpdateProfile?: (data: Partial<User>) => Promise<void>;
 }
 
 const Account: React.FC<AccountProps> = ({
     currentUser, partner, onReset, onConnect, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties, notificationSettings, setNotificationSettings, initialTab = 'profile',
-    onBackupIdentity, onRestoreIdentity, onGenerateSyncCode, onConsumeSyncCode
+    onBackupIdentity, onRestoreIdentity, onGenerateSyncCode, onConsumeSyncCode, onResetEncryption, encryptionStatus, onUpdateProfile
 }) => {
     const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'privacy'>(initialTab);
 
@@ -127,7 +130,12 @@ const Account: React.FC<AccountProps> = ({
 
                         <div className="mb-6">
                             <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">Security Status</span>
-                            {currentUser.encryptedSharedKey ? (
+                            {encryptionStatus === 'broken-identity' ? (
+                                <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-2 rounded-lg inline-block border border-red-100 animate-pulse">
+                                    <span>❌</span>
+                                    <span className="text-xs font-bold">Identity Error (Repair Needed)</span>
+                                </div>
+                            ) : currentUser.encryptedSharedKey ? (
                                 <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg inline-block">
                                     <span>🔒</span>
                                     <span className="text-xs font-bold">End-to-End Encrypted</span>
@@ -144,6 +152,22 @@ const Account: React.FC<AccountProps> = ({
                                 </div>
                             )}
                         </div>
+
+                        {/* Emergency Encryption Reset */}
+                        {(currentUser.encryptedSharedKey && !currentUser.sharedKeyBase64) || encryptionStatus === 'broken-identity' ? (
+                            <div className="mt-2 mb-4">
+                                <button
+                                    onClick={() => {
+                                        if (confirm("⚠️ SYSTEM RESET: This will fix the 'OperationError' by creating a new identity. You will lose access to old encrypted messages unless you have a backup. Continue?")) {
+                                            onResetEncryption?.();
+                                        }
+                                    }}
+                                    className="w-full text-xs font-bold text-red-500 border border-red-200 bg-red-50 px-4 py-3 rounded-xl hover:bg-red-100 transition flex items-center justify-center gap-2"
+                                >
+                                    <span>🛠️</span> Fix "OperationError" / Reset Keys
+                                </button>
+                            </div>
+                        ) : null}
 
                         <div className="space-y-4">
                             <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Pairing</h3>
@@ -179,6 +203,58 @@ const Account: React.FC<AccountProps> = ({
                             </span>
                             <span className="text-amber-400">→</span>
                         </button>
+                    </div>
+
+                    {/* AI Customization Section */}
+                    <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-[2.5rem] shadow-sm border border-indigo-100 p-8">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold text-xl">🧞‍♂️</div>
+                            <div>
+                                <h3 className="text-lg font-serif font-bold text-indigo-900">AI Personalization</h3>
+                                <p className="text-xs text-indigo-500">Teach the AI how to help you best.</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-2 block">Relationship Context</label>
+                                <textarea
+                                    className="w-full p-4 bg-white rounded-xl text-sm border border-indigo-100 focus:border-indigo-400 outline-none min-h-[80px] placeholder-gray-300"
+                                    placeholder="e.g. Married 5 years, high stress jobs, trying to communicate better..."
+                                    defaultValue={currentUser.relationshipContext || ''}
+                                    onBlur={(e) => onUpdateProfile?.({ relationshipContext: e.target.value })}
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 italic">
+                                    The AI uses this to tailor advice (e.g. "Since you are long-distance...").
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-2 block">Current Focus (Working On)</label>
+                                <textarea
+                                    className="w-full p-4 bg-white rounded-xl text-sm border border-indigo-100 focus:border-indigo-400 outline-none min-h-[80px] placeholder-gray-300"
+                                    placeholder="e.g. Improving communication, rebuilding trust, more quality time..."
+                                    defaultValue={currentUser.workingOn || ''}
+                                    onBlur={(e) => onUpdateProfile?.({ workingOn: e.target.value })}
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 italic">
+                                    The AI will prioritize features and tips that help with this goal.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-indigo-400 mb-2 block">Agent Persona (Therapist Mode)</label>
+                                <textarea
+                                    className="w-full p-4 bg-white rounded-xl text-sm border border-indigo-100 focus:border-indigo-400 outline-none min-h-[80px] placeholder-gray-300"
+                                    placeholder="e.g. Friendly & Casual, Stern & Clinical, Funny & Lighthearted..."
+                                    defaultValue={currentUser.agentPersona || ''}
+                                    onBlur={(e) => onUpdateProfile?.({ agentPersona: e.target.value })}
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 italic">
+                                    Defines how the AI speaks to you (e.g. "Coach", "Best Friend", "Therapist").
+                                </p>
+                            </div>
+                        </div>
                     </div>
 
                     <button onClick={onReset} className="w-full p-4 text-red-400 hover:text-red-600 font-bold transition text-sm">
@@ -525,19 +601,37 @@ const Account: React.FC<AccountProps> = ({
 };
 
 // Separate component to handle scanner lifecycle
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 
 const ScannerInitializer = ({ onScan }: { onScan: (text: string) => void }) => {
     React.useEffect(() => {
-        const scanner = new Html5QrcodeScanner(
-            "reader",
-            { fps: 10, qrbox: { width: 250, height: 250 } },
-            false
-        );
-        scanner.render(onScan, (err) => console.warn(err));
+        const html5QrCode = new Html5Qrcode("reader");
+
+        const startScanner = async () => {
+            try {
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
+                    (decodedText) => {
+                        onScan(decodedText);
+                        html5QrCode.stop().catch(console.error);
+                    },
+                    (errorMessage) => {
+                        // parse error, ignore
+                    }
+                );
+            } catch (err) {
+                console.error("Error starting scanner", err);
+            }
+        };
+
+        startScanner();
 
         return () => {
-            scanner.clear().catch(console.error);
+            if (html5QrCode.isScanning) {
+                html5QrCode.stop().catch(console.error);
+            }
+            html5QrCode.clear();
         };
     }, []);
     return null;

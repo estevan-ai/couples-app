@@ -60,8 +60,8 @@ const App: React.FC = () => {
       return;
     }
 
-    if (contextId.includes('bounty-')) {
-      const id = contextId.replace('bounty-', '');
+    if (contextId.includes('bounty-') || contextId.includes('favor-')) {
+      const id = contextId.replace('bounty-', '').replace('favor-', '');
       setHighlightedBountyId(Number(id));
       setActiveTab('favors');
       return;
@@ -88,7 +88,6 @@ const App: React.FC = () => {
   // Encryption Hook
   const {
     sharedKey,
-    status: encryptionStatus,
     generateIdentity,
     createSharedFolder,
     publicKeyBase64,
@@ -96,7 +95,9 @@ const App: React.FC = () => {
     backupIdentity,
     restoreIdentity,
     generateSyncCode,
-    consumeSyncCode
+    consumeSyncCode,
+    resetEncryptionIdentity,
+    status: encryptionStatus
   } = useEncryption(currentUser?.uid);
 
   // --- JOURNAL LOGIC ---
@@ -190,7 +191,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    console.log("App Version: 1.3.0 - Encryption Migration");
+    console.log("App Version: 1.4.0 - Logo Fixed & Nav Patched");
   }, []);
 
   // Force Re-sync Demo Data on Mount/Update (Fix for HMR/Data Refresh)
@@ -1264,184 +1265,201 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      <div className="max-w-7xl mx-auto px-4 pb-4 sm:px-6 sm:pb-6 pt-56">
-        <header className="fixed top-0 left-0 right-0 z-50 bg-transparent px-4 py-4 mb-6 flex justify-between items-center pointer-events-none">
-          <div className="max-w-7xl mx-auto w-full flex justify-between items-center pointer-events-auto">
-            <button onClick={() => setIsSidebarOpen(true)} className="w-12 h-12 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center hover:bg-white transition group">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-600 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-            </button>
+      {currentUser ? (
+        <>
+          <div className="max-w-7xl mx-auto px-4 pb-4 sm:px-6 sm:pb-6 pt-24">
+            <header className="fixed top-0 left-0 right-0 z-50 bg-transparent px-4 py-4 mb-6 flex justify-between items-center pointer-events-none">
+              <div className="max-w-7xl mx-auto w-full flex justify-between items-center pointer-events-auto">
+                <button onClick={() => setIsSidebarOpen(true)} className="w-12 h-12 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-gray-100 flex items-center justify-center hover:bg-white transition group">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-600 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                </button>
 
-            <div className="flex items-center gap-4 bg-white/80 backdrop-blur-md px-6 py-4 rounded-3xl shadow-sm border border-gray-100 transition-all duration-300">
-              <img src="/Logo-V2.svg" alt="Logo" className="w-24 h-24 object-contain drop-shadow-sm" />
-              <div className="flex flex-col items-start leading-none">
-                <h1 className="text-xl font-serif font-bold text-gray-800 tracking-tight">The Couple's Currency</h1>
-                <p className="text-[10px] font-serif italic text-gray-500 tracking-wide mt-1">Investing in Us.</p>
+                <div className="flex items-center gap-4 bg-white/80 backdrop-blur-md px-6 py-4 rounded-3xl shadow-sm border border-gray-100 transition-all duration-300">
+                  <img src="/Logo-V2.svg" alt="Logo" className="w-24 h-24 object-contain drop-shadow-sm" />
+                  <div className="flex flex-col items-start leading-none">
+                    <h1 className="text-xl font-serif font-bold text-gray-800 tracking-tight">The Couple's Currency</h1>
+                    <p className="text-[10px] font-serif italic text-gray-500 tracking-wide mt-1">Investing in Us.</p>
+                  </div>
+                </div>
+
+                <div onClick={() => setActiveTab('account')} className="w-12 h-12 bg-white/80 backdrop-blur-md rounded-2xl flex items-center justify-center text-blue-600 font-bold shadow-sm border border-gray-100 cursor-pointer hover:bg-white transition">
+                  {currentUser.name[0]}
+                </div>
               </div>
-            </div>
+            </header>
 
-            <div onClick={() => setActiveTab('account')} className="w-12 h-12 bg-white/80 backdrop-blur-md rounded-2xl flex items-center justify-center text-blue-600 font-bold shadow-sm border border-gray-100 cursor-pointer hover:bg-white transition">
-              {currentUser.name[0]}
-            </div>
+            <main className="animate-in fade-in duration-700 pb-24">
+              {activeTab === 'dashboard' && (
+                <Dashboard
+                  currentUser={currentUser}
+                  partner={partner}
+                  bounties={bounties}
+                  chatter={chatter}
+                  bookmarks={allBookmarks[currentUser.name] || {}}
+                  // Safe access confirmed
+                  partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
+                  onNavigate={handleNavigate}
+                  onTagClick={handleTagClickFromDashboard}
+                  onNavigateContext={handleNavigateContext}
+                />
+              )}
+
+              {activeTab === 'directory' && (
+                <TermsDirectory
+                  terms={[...termsData, ...(customTerms || [])]}
+                  onAddBounty={handleAddBounty}
+                  onAddTerm={handleCreateTerm}
+                  chatter={chatter}
+                  onAddNote={addNote}
+                  bookmarks={allBookmarks[currentUser.name] || {}}
+                  onBookmarkToggle={handleBookmarkToggle}
+                  isDemo={false}
+                  // Safe access confirmed
+                  partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
+                  partnerName={partner?.name}
+                  onDeleteNote={deleteNote}
+                  onDeleteBounty={(id) => console.log("Delete bounty TODO", id)}
+                  highlightedTermId={highlightedTermId}
+                  initialSearchTerm={pendingSearchTerm}
+                  onClearInitialSearch={() => setPendingSearchTerm(null)}
+                  currentUser={currentUser || undefined}
+                  onReflect={handleReflect}
+                />
+              )}
+              {activeTab === 'chemistry' && (
+                <ChemistryGuide
+                  currentUser={currentUser}
+                  partner={partner}
+                  bookmarks={allBookmarks[currentUser.name] || {}}
+                  partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
+                  highlights={highlights}
+                  onPinInsight={handlePinInsight}
+                />
+              )}
+              {activeTab === 'giving' && <GivingReceivingGuide />}
+              {activeTab === 'session' && <GuidedSession />}
+              {activeTab === 'favors' && (
+                <BountyBoard
+                  bounties={bounties}
+                  currentUser={currentUser}
+                  bookmarks={allBookmarks[currentUser.name] || {}}
+                  partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
+                  onAddBounty={handleAddBounty}
+                  onToggleStatus={handleToggleStatus}
+                  onClaimBounty={handleClaimBounty}
+                  onDeleteBounty={handleDeleteBounty}
+                  onUpdateBounty={handleUpdateBounty}
+                  onArchiveBounty={handleArchiveBounty}
+                  onDeleteNote={deleteNote}
+                  onEditNote={editNote}
+                  chatter={chatter}
+                  onAddNote={addNote}
+                  highlightedBountyId={highlightedBountyId}
+                />
+              )}
+              {activeTab === 'flirts' && currentUser && (
+                <FlirtSection
+                  currentUser={currentUser}
+                  partner={partner}
+                  chatter={chatter}
+                  onAddNote={addNote}
+                  onDeleteNote={deleteNote}
+                  onPinInsight={(text) => console.log("Pin insight TODO", text)}
+                  sharedKey={sharedKey}
+                  onNavigateContext={handleNavigateContext}
+                  onMarkRead={markNoteAsRead}
+                  onToggleReaction={handleToggleReaction}
+                  onMarkAllRead={handleMarkAllRead}
+                  onMarkAllUnread={handleMarkAllUnread}
+                  onToggleRead={handleToggleRead}
+                  onEditNote={editNote}
+                  privateKey={privateKey}
+                  onReflect={handleReflect}
+                  initialTab={initialFlirtTab}
+                  terms={termsData} // Pass terms for lookup
+                  partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
+                />
+              )}
+
+
+              {activeTab === 'account' && currentUser && (
+                <Account
+                  currentUser={currentUser}
+                  partner={partner}
+                  invites={invites}
+                  setInvites={setInvites}
+                  onReset={handleReset}
+                  onResetHandlers={handleResetCategory}
+                  onConnect={handleConnectPartner}
+                  sharingSettings={sharingSettings}
+                  setSharingSettings={setSharingSettings}
+                  notificationSettings={notificationSettings}
+                  setNotificationSettings={setNotificationSettings}
+                  chatter={chatter}
+                  bounties={bounties}
+                  initialTab={accountInitialTab}
+                  onBackupIdentity={backupIdentity}
+                  onRestoreIdentity={restoreIdentity}
+                  onGenerateSyncCode={generateSyncCode}
+                  onConsumeSyncCode={consumeSyncCode}
+                  onResetEncryption={resetEncryptionIdentity}
+                  encryptionStatus={encryptionStatus}
+                  onUpdateProfile={async (data) => {
+                    if (!currentUser) return;
+                    await updateDoc(doc(db, 'users', currentUser.uid!), data);
+                  }}
+                />
+              )}
+              {activeTab === 'journal' && currentUser && (
+                <ReflectionJournal
+                  entries={journalEntries}
+                  onAddEntry={handleAddJournalEntry}
+                  currentUser={currentUser}
+                  sharedKey={sharedKey}
+                  initialText={pendingReflection}
+                  onClearInitialText={() => setPendingReflection(undefined)}
+                />
+              )}
+            </main>
           </div>
-        </header>
-
-        <main className="animate-in fade-in duration-700 pb-24">
-          {activeTab === 'dashboard' && (
-            <Dashboard
-              currentUser={currentUser}
-              partner={partner}
-              bounties={bounties}
-              chatter={chatter}
-              bookmarks={allBookmarks[currentUser.name] || {}}
-              // Safe access confirmed
-              partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
-              onNavigate={handleNavigate}
-              onTagClick={handleTagClickFromDashboard}
-              onNavigateContext={handleNavigateContext}
-            />
-          )}
-
-          {activeTab === 'directory' && (
-            <TermsDirectory
-              terms={[...termsData, ...(customTerms || [])]}
-              onAddBounty={handleAddBounty}
-              onAddTerm={handleCreateTerm}
-              chatter={chatter}
-              onAddNote={addNote}
-              bookmarks={allBookmarks[currentUser.name] || {}}
-              onBookmarkToggle={handleBookmarkToggle}
-              isDemo={false}
-              // Safe access confirmed
-              partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
-              partnerName={partner?.name}
-              onDeleteNote={deleteNote}
-              onDeleteBounty={(id) => console.log("Delete bounty TODO", id)}
-              highlightedTermId={highlightedTermId}
-              initialSearchTerm={pendingSearchTerm}
-              onClearInitialSearch={() => setPendingSearchTerm(null)}
-              currentUser={currentUser || undefined}
-              onReflect={handleReflect}
-            />
-          )}
-          {activeTab === 'chemistry' && (
-            <ChemistryGuide
-              currentUser={currentUser}
-              partner={partner}
-              bookmarks={allBookmarks[currentUser.name] || {}}
-              partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
-              highlights={highlights}
-              onPinInsight={handlePinInsight}
-            />
-          )}
-          {activeTab === 'giving' && <GivingReceivingGuide />}
-          {activeTab === 'session' && <GuidedSession />}
-          {activeTab === 'favors' && (
-            <BountyBoard
-              bounties={bounties}
-              currentUser={currentUser}
-              bookmarks={allBookmarks[currentUser.name] || {}}
-              partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
-              onAddBounty={handleAddBounty}
-              onToggleStatus={handleToggleStatus}
-              onClaimBounty={handleClaimBounty}
-              onDeleteBounty={handleDeleteBounty}
-              onUpdateBounty={handleUpdateBounty}
-              onArchiveBounty={handleArchiveBounty}
-              onDeleteNote={deleteNote}
-              onEditNote={editNote}
-              chatter={chatter}
-              onAddNote={addNote}
-              highlightedBountyId={highlightedBountyId}
-            />
-          )}
-          {activeTab === 'flirts' && currentUser && (
-            <FlirtSection
-              currentUser={currentUser}
-              partner={partner}
-              chatter={chatter}
-              onAddNote={addNote}
-              onDeleteNote={deleteNote}
-              onPinInsight={(text) => console.log("Pin insight TODO", text)}
-              sharedKey={sharedKey}
-              onNavigateContext={handleNavigateContext}
-              onMarkRead={markNoteAsRead}
-              onToggleReaction={handleToggleReaction}
-              onMarkAllRead={handleMarkAllRead}
-              onMarkAllUnread={handleMarkAllUnread}
-              onToggleRead={handleToggleRead}
-              onEditNote={editNote}
-              privateKey={privateKey}
-              onReflect={handleReflect}
-              initialTab={initialFlirtTab}
-              terms={termsData} // Pass terms for lookup
-              partnerBookmarks={(partner && allBookmarks[partner.name]) ? allBookmarks[partner.name] : {}}
-            />
-          )}
-
-
-          {activeTab === 'account' && currentUser && (
-            <Account
-              currentUser={currentUser}
-              partner={partner}
-              invites={invites}
-              setInvites={setInvites}
-              onReset={handleReset}
-              onResetHandlers={handleResetCategory}
-              onConnect={handleConnectPartner}
-              sharingSettings={sharingSettings}
-              setSharingSettings={setSharingSettings}
-              notificationSettings={notificationSettings}
-              setNotificationSettings={setNotificationSettings}
-              chatter={chatter}
-              bounties={bounties}
-              initialTab={accountInitialTab}
-              onBackupIdentity={backupIdentity}
-              onRestoreIdentity={restoreIdentity}
-              onGenerateSyncCode={generateSyncCode}
-              onConsumeSyncCode={consumeSyncCode}
-            />
-          )}
-          {activeTab === 'journal' && currentUser && (
-            <ReflectionJournal
-              entries={journalEntries}
-              onAddEntry={handleAddJournalEntry}
-              currentUser={currentUser}
-              sharedKey={sharedKey}
-              initialText={pendingReflection}
-              onClearInitialText={() => setPendingReflection(undefined)}
-            />
-          )}
-        </main>
-      </div>
-      <div className="fixed bottom-0 left-0 w-full sm:w-[600px] sm:left-1/2 sm:-translate-x-1/2 sm:bottom-8 sm:rounded-3xl bg-white border-t sm:border border-gray-100 flex justify-around items-center p-4 pb-6 sm:pb-4 z-[90] shadow-2xl transition-all duration-300">
-        {[
-          { id: 'dashboard', icon: '🏦', label: 'Bank' },
-          { id: 'directory', icon: '📖', label: 'Directory' },
-          { id: 'favors', icon: '🎟️', label: 'Favors' },
-          { id: 'journal', icon: '📓', label: 'Journal' }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as Tab)}
-            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition ${activeTab === tab.id ? 'text-blue-600 bg-blue-50 font-bold' : 'text-gray-400'}`}
-          >
-            <span className="text-xl leading-none">{tab.icon}</span>
-            <span className="text-[9px] uppercase tracking-wide">{tab.label}</span>
-          </button>
-        ))}
-        {/* Flirts button with badge, rendered separately */}
-        <button onClick={() => setActiveTab('flirts')} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition relative group ${activeTab === 'flirts' ? 'text-pink-600 bg-pink-50 font-bold' : 'text-gray-400'}`}>
-          <div className="relative">
-            <span className="text-xl leading-none group-hover:scale-110 transition-transform block">💌</span>
-            {currentUser && Object.values(chatter).flat().filter((n: any) => n.timestamp > Date.now() - 86400000 && n.author !== currentUser.name).length > 0 && (
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>
-            )}
+          <div className="fixed bottom-0 left-0 w-full sm:w-[600px] sm:left-1/2 sm:-translate-x-1/2 sm:bottom-8 sm:rounded-3xl bg-white border-t sm:border border-gray-100 flex justify-around items-center p-4 pb-6 sm:pb-4 z-[90] shadow-2xl transition-all duration-300">
+            {[
+              { id: 'dashboard', icon: '🏦', label: 'Bank' },
+              { id: 'directory', icon: '📖', label: 'Directory' },
+              { id: 'favors', icon: '🎟️', label: 'Favors' },
+              { id: 'journal', icon: '📓', label: 'Journal' }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as Tab)}
+                className={`flex flex-col items-center gap-1 p-2 rounded-xl transition ${activeTab === tab.id ? 'text-blue-600 bg-blue-50 font-bold' : 'text-gray-400'}`}
+              >
+                <span className="text-xl leading-none">{tab.icon}</span>
+                <span className="text-[9px] uppercase tracking-wide">{tab.label}</span>
+              </button>
+            ))}
+            {/* Flirts button with badge, rendered separately */}
+            <button onClick={() => setActiveTab('flirts')} className={`flex flex-col items-center gap-1 p-2 rounded-xl transition relative group ${activeTab === 'flirts' ? 'text-pink-600 bg-pink-50 font-bold' : 'text-gray-400'}`}>
+              <div className="relative">
+                <span className="text-xl leading-none group-hover:scale-110 transition-transform block">💌</span>
+                {currentUser && Object.values(chatter).flat().filter((n: any) => n.timestamp > Date.now() - 86400000 && n.author !== currentUser.name).length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white"></span>
+                )}
+              </div>
+              <span className="text-[9px] uppercase tracking-wide mt-1 block">Flirts</span>
+            </button>
           </div>
-          <span className="text-[9px] uppercase tracking-wide mt-1 block">Flirts</span>
-        </button>
-      </div>
+        </>
+      ) : (
+        <UserSetup
+          onSetupComplete={handleIndividualSetup}
+          initialStep="age" // Or pass dynamic prop if needed
+          initialName={""}
+          initialEmail={""}
+        />
+      )}
       <ReloadPrompt />
-      <Chatbot />
+      <Chatbot currentUser={currentUser} partner={partner} />
       <InstallPrompt isOpen={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
     </div>
   );

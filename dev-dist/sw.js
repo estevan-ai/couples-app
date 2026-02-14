@@ -67,14 +67,11 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-7a5e81cd'], (function (workbox) { 'use strict';
+define(['./workbox-5a5d9309'], (function (workbox) { 'use strict';
 
   importScripts("firebase-messaging-sw.js");
-  self.addEventListener('message', event => {
-    if (event.data && event.data.type === 'SKIP_WAITING') {
-      self.skipWaiting();
-    }
-  });
+  self.skipWaiting();
+  workbox.clientsClaim();
 
   /**
    * The precacheAndRoute() method efficiently caches and responds to
@@ -83,7 +80,7 @@ define(['./workbox-7a5e81cd'], (function (workbox) { 'use strict';
    */
   workbox.precacheAndRoute([{
     "url": "index.html",
-    "revision": "0.omqgjv4cdlo"
+    "revision": "0.1hjltfna4tg"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {

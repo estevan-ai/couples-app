@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, Chat } from '@google/genai';
+import { GoogleGenerativeAI, ChatSession } from '@google/generative-ai';
 import { User } from '../types';
 
 interface Message {
@@ -19,7 +19,7 @@ interface ChemistryAIDeepDiveProps {
 
 const ChemistryAIDeepDive: React.FC<ChemistryAIDeepDiveProps> = ({ isOpen, onClose, currentUser, partner, initialQuery, onPinInsight }) => {
     const [messages, setMessages] = useState<Message[]>([]);
-    const [chat, setChat] = useState<Chat | null>(null);
+    const [chat, setChat] = useState<ChatSession | null>(null);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -56,13 +56,20 @@ const ChemistryAIDeepDive: React.FC<ChemistryAIDeepDiveProps> = ({ isOpen, onClo
             if (!apiKey) {
                 throw new Error("Missing VITE_GOOGLE_AI_KEY.");
             }
-            const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
+            const ai = new GoogleGenerativeAI(apiKey);
+            const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
 
             const partnerName = partner?.name || "Partner";
             const userName = currentUser.name;
 
+            // Personalized Context
+            const relContext = currentUser.relationshipContext ? `\nRELATIONSHIP CONTEXT: "${currentUser.relationshipContext}"` : "";
+            const workingOn = currentUser.workingOn ? `\nCURRENTLY WORKING ON: "${currentUser.workingOn}"` : "";
+            const persona = currentUser.agentPersona ? `\nYOUR PERSONA: ${currentUser.agentPersona}` : "\nYOUR PERSONA: Warm, scientific but accessible.";
+
             const systemPrompt = `You are a specialist in the Neurochemistry of Love and Relationship Dynamics. 
             You are speaking to ${userName} (and possibly their partner ${partnerName}).
+            ${relContext}${workingOn}${persona}
             
             Your Knowledge Base:
             1. **The 5 Chemicals**: Dopamine (Wanting), Oxytocin (Bonding), Vasopressin (Protective), Endorphins (Comfort), Prolactin (Satiety).
@@ -73,10 +80,9 @@ const ChemistryAIDeepDive: React.FC<ChemistryAIDeepDiveProps> = ({ isOpen, onClo
 
             Tone: Warm, scientific but accessible, non-judgmental, and practical.
             
-            Start by briefly welcoming them to the "Chemistry Lab" and asking a provocative question about their current dynamic.`;
+            Start by briefly welcoming them to the "Chemistry Lab" and asking a provocative question about their current dynamic, tailored to what they are 'Working On' if provided.`;
 
-            const newChat = ai.chats.create({
-                model: 'gemini-3-flash-preview',
+            const newChat = model.startChat({
                 history: [
                     { role: 'user', parts: [{ text: `INSTRUCTION: ${systemPrompt}` }] },
                     { role: 'model', parts: [{ text: "Welcome to the Chemistry Lab. I am ready to explore the biology of your bond." }] }
@@ -86,8 +92,9 @@ const ChemistryAIDeepDive: React.FC<ChemistryAIDeepDiveProps> = ({ isOpen, onClo
 
             if (!initialQuery) {
                 const initialPrompt = `Introduce yourself concisely and ask a question to get them thinking about their chemistry loop.`;
-                const response = await newChat.sendMessage({ message: initialPrompt });
-                setMessages([{ role: 'model', text: response.text || "" }]);
+                const result = await newChat.sendMessage(initialPrompt);
+                const response = await result.response;
+                setMessages([{ role: 'model', text: response.text() || "" }]);
             }
         } catch (error: any) {
             console.error("Guide Initialization Error:", error);
@@ -108,8 +115,9 @@ const ChemistryAIDeepDive: React.FC<ChemistryAIDeepDiveProps> = ({ isOpen, onClo
         setIsLoading(true);
 
         try {
-            const response = await chat.sendMessage({ message: textToSend });
-            const botMsg: Message = { role: 'model', text: response.text || "I'm thinking..." };
+            const result = await chat.sendMessage(textToSend);
+            const response = await result.response;
+            const botMsg: Message = { role: 'model', text: response.text() || "I'm thinking..." };
             setMessages(prev => [...prev, botMsg]);
         } catch (error: any) {
             setMessages(prev => [...prev, { role: 'model', text: "Error getting response." }]);
@@ -121,8 +129,8 @@ const ChemistryAIDeepDive: React.FC<ChemistryAIDeepDiveProps> = ({ isOpen, onClo
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border border-gray-100">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden border border-gray-100 mb-24 sm:mb-28">
                 {/* Header */}
                 <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-purple-50 to-pink-50 flex justify-between items-center">
                     <div className="flex items-center gap-3">

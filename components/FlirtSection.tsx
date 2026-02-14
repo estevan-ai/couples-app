@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, ChatterNote } from '../types';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { storage } from '../firebase';
 import { ref, uploadBytes } from 'firebase/storage';
 import { encryptBlob, ivToString, importPublicKey, wrapAESKey, generateAESKey } from '../utils/encryption';
@@ -369,11 +369,15 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
             if (!apiKey) throw new Error("AI Key missing");
 
             // Fix AI Model (Use public gemini-1.5-flash)
-            const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
-            const systemPrompt = `You are a helpful romantic assistant for ${currentUser.name} messaging ${partner?.name || 'Partner'}. Tone: ${aiTone}. Keep it short (1-2 sentences).`;
+            const ai = new GoogleGenerativeAI(apiKey);
+            // Personalized System Prompt
+            const relationshipContext = currentUser.relationshipContext ? `\nRELATIONSHIP CONTEXT: "${currentUser.relationshipContext}"` : "";
+            const persona = currentUser.agentPersona ? `\nYOUR PERSONA: ${currentUser.agentPersona}` : "\nYOUR PERSONA: A helpful, romantic communication assistant.";
 
-            const chat = ai.chats.create({
-                model: 'gemini-1.5-flash-001',
+            const systemPrompt = `You are a helpful romantic assistant for ${currentUser.name} messaging ${partner?.name || 'Partner'}.${relationshipContext}${persona}\n\nCURRENT TONE TARGET: ${aiTone}. \nGOAL: Help the user draft a message that fits their relationship context and chosen tone. Keep it short (1-2 sentences).`;
+
+            const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
+            const chat = model.startChat({
                 history: [
                     { role: 'user', parts: [{ text: systemPrompt }] }
                 ]
@@ -382,8 +386,9 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
             const context = messages.slice(-5).map(m => `${m.author}: ${m.text}`).join('\n');
             const prompt = `Context:\n${context}\n\nDraft: "${draft}"\n\nTask: ${draft ? "Polish/Complete this draft." : "Write a new message."}`;
 
-            const result = await chat.sendMessage({ message: prompt });
-            setDraft(result.text.replace(/"/g, '').trim());
+            const result = await chat.sendMessage(prompt);
+            const response = await result.response;
+            setDraft(response.text().replace(/"/g, '').trim());
 
         } catch (e) {
             console.error("AI Generation Error", e);
@@ -397,7 +402,14 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
 
     // --- 7. RENDER ---
     return (
-        <div className="flex flex-col h-[85vh] sm:h-[90vh] max-w-2xl mx-auto bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative border border-gray-100">
+        <div className="flex flex-col h-[calc(100dvh_-_140px)] max-w-2xl mx-auto bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative border border-gray-100">
+            {/* ... privacy ... */}
+
+            {/* ... header ... */}
+
+            {/* Sticky Quick Flirt Removed from here */}
+
+            {/* ... content ... */}
 
             {/* --- PRIVACY BANNER (Restored & Interactive) --- */}
             <button
@@ -538,6 +550,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
                             } else if (ctx === 'general-flirt' || ctx.startsWith('flirt-')) {
                                 setActiveTab('flirts');
                             } else {
+                                // Pass everything else (bounties, terms, etc) to App.tsx
                                 if (onNavigateContext) onNavigateContext(ctx);
                             }
                         }}
@@ -648,17 +661,20 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
                 </div>
             ) : (
                 /* --- MESSAGES FEED (Flirts OR Thought Detail) --- */
-                <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-2 bg-[#f9f9fb] scroll-smooth pb-20">
-                    {/* Top Input Trigger for Flirts too */}
+                <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-2 bg-[#f9f9fb] scroll-smooth pb-32">
+                    {/* Compact Quick Flirt Trigger (Restored) */}
                     {activeTab === 'flirts' && (
                         <button
                             onClick={() => setIsComposerExpanded(true)}
-                            className="w-full bg-white hover:bg-pink-50 border border-pink-100 rounded-2xl p-3 flex items-center gap-3 transition-all text-left group mb-4 shadow-sm"
+                            className="w-full bg-white hover:bg-pink-50 border border-pink-100 rounded-xl p-3 flex items-center justify-between transition-all group mb-4 shadow-sm sticky top-0 z-10"
                         >
-                            <div className="w-8 h-8 rounded-full bg-pink-100 border border-pink-200 flex items-center justify-center text-pink-500 group-hover:scale-110 transition-transform">
-                                <span className="text-lg">💌</span>
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-pink-100 border border-pink-200 flex items-center justify-center text-pink-500 group-hover:scale-110 transition-transform">
+                                    <span className="text-lg">💌</span>
+                                </div>
+                                <span className="text-gray-500 font-bold text-sm group-hover:text-pink-600">Send a Quick Flirt...</span>
                             </div>
-                            <span className="text-gray-400 text-sm font-medium group-hover:text-pink-600">Send a quick flirt to {partner?.name}...</span>
+                            <span className="text-pink-300 font-light text-lg">+</span>
                         </button>
                     )}
 

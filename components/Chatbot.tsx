@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, Chat } from '@google/genai';
+import { GoogleGenerativeAI, ChatSession } from '@google/generative-ai';
 import ChatIcon from './icons/ChatIcon';
 
 interface Message {
@@ -8,27 +8,44 @@ interface Message {
     text: string;
 }
 
+import { User } from '../types';
+
 interface ChatbotProps {
     isDemo?: boolean;
+    currentUser: User | null;
+    partner: User | null;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ isDemo = false }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ isDemo = false, currentUser, partner }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [chat, setChat] = useState<Chat | null>(null);
+    const [chat, setChat] = useState<ChatSession | null>(null);
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
-    const systemInstruction = `You are a helpful and compassionate AI assistant for "The Couples App". Your purpose is to guide users through the app's content and help them have better conversations about intimacy and connection.
+    const systemInstruction = `You are "The Couples' Currency" AI Guide. Your purpose is to help ${currentUser?.name || 'the user'} (Partner: ${partner?.name || 'their partner'}) navigate the app to improve their relationship.
 
-The app has four main sections:
-1.  **Terms Directory**: A dictionary of intimacy terms, from "Sweet & Safe" to "Wild & Advanced". Users can filter and bookmark terms they like. You can help them find terms or understand categories.
-2.  **Chemistry Guide**: Explains the brain chemistry of connection (dopamine, oxytocin, etc.) and the differences between "journey" (emotional build-up) vs. "destination" (event-focused) arousal. You can clarify these concepts.
-3.  **Giving & Receiving Guide**: Based on the Wheel of Consent, it introduces four modes: Serving, Accepting, Taking, and Allowing. It's a framework for clear communication about desire. You can explain these modes.
-4.  **Guided Session**: A step-by-step interactive guide that walks a couple through a conversation using the Giving & Receiving framework.
+    **USER CONTEXT:**
+    - Relationship Context: "${currentUser?.relationshipContext || 'Not specified'}"
+    - Currently Working On: "${currentUser?.workingOn || 'General improvement'}"
+    - Partner Name: ${partner?.name || 'Partner'}
+    
+    **YOUR ROLE:**
+    - Be a proactive guide. Don't just answer questions; suggest *specific app features* that help with their "Working On" goal.
+    - Use the Relationship Context to be empathetic (e.g., if "Long Distance", suggest digital dates).
+    
+    **APP FEATURES (Recommend these):**
+    1.  **Bank (Dashboard)**: For tracking positive actions.
+    2.  **Directory**: A dictionary of intimacy terms. Good for finding words for desires.
+    3.  **Favor Board**: For tangible acts of service.
+    4.  **Flirts**: For quick romantic pings.
+    5.  **Chemistry Guide**: Explains the science of connection.
+    6.  **Giving & Receiving**: A framework for consent and desire (Wheel of Consent).
+    7.  **Guided Session**: Step-by-step conflict/connection resolution.
+    8.  **Reflection Journal**: Private processing.
 
-Your persona is warm, encouraging, and non-judgmental. You are not a therapist, so do not give medical or psychological advice. Instead, gently guide users back to the app's tools and frameworks. Help them find the right words and feel more confident starting these important conversations. Be concise and clear in your answers.`;
+    **TONE:** Warm, wise, and encouraging. You are a coach, not just a search engine.`;
 
     const renderInline = (text: string) => {
         const parts = text.split(/(\*\*.*?\*\*)/g);
@@ -89,9 +106,10 @@ Your persona is warm, encouraging, and non-judgmental. You are not a therapist, 
             }
             try {
                 const apiKey = import.meta.env.VITE_GOOGLE_AI_KEY;
-                const ai = new GoogleGenAI({ apiKey: apiKey as string, apiVersion: 'v1beta' });
-                const newChat = ai.chats.create({
-                    model: 'gemini-3-flash-preview',
+                const ai = new GoogleGenerativeAI(apiKey as string);
+                const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
+
+                const newChat = model.startChat({
                     history: [
                         { role: 'user', parts: [{ text: `INSTRUCTION: ${systemInstruction}` }] },
                         { role: 'model', parts: [{ text: "Hello! I am your AI relationship assistant. I'm ready to help you navigate your connection journey." }] }
@@ -132,8 +150,10 @@ Your persona is warm, encouraging, and non-judgmental. You are not a therapist, 
         }
 
         try {
-            const response = await chat!.sendMessage({ message: input });
-            const modelMessage: Message = { role: 'model', text: response.text || 'I am sorry, I could not generate a response.' };
+            const result = await chat!.sendMessage(input);
+            const response = await result.response;
+            const text = response.text();
+            const modelMessage: Message = { role: 'model', text: text || 'I am sorry, I could not generate a response.' };
             setMessages(prev => [...prev, modelMessage]);
         } catch (error: any) {
             console.error('Error sending message:', error);

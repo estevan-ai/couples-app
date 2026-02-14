@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { JournalEntry } from '../types';
 import { User } from '../types';
 
@@ -39,8 +39,9 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
 
             // Trigger AI response
             setIsProcessing(true);
-            chat.sendMessage({ message: contextMsg }).then((response: any) => {
-                const modelText = response.text || "";
+            chat.sendMessage(contextMsg).then(async (result: any) => {
+                const response = await result.response;
+                const modelText = response.text() || "";
                 setMessages(prev => [...prev, { role: 'model', text: modelText }]);
                 setIsProcessing(false);
                 if (onClearInitialText) onClearInitialText();
@@ -52,7 +53,7 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
         const apiKey = import.meta.env.VITE_GOOGLE_AI_KEY;
         if (!apiKey) return;
 
-        const ai = new GoogleGenAI({ apiKey: apiKey as string, apiVersion: 'v1beta' });
+        const ai = new GoogleGenerativeAI(apiKey as string);
         const systemPrompt = `You are the Reflection Coach for "The Couples Currency".
     Your goal: Help ${currentUser.name} explore their feelings about intimacy, their partner, and their own needs.
     
@@ -69,8 +70,8 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
     [ENTRY_CATEGORY: reflection|gratitude|complication|discovery]
     `;
 
-        const newChat = ai.chats.create({
-            model: 'gemini-1.5-flash-001',
+        const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const newChat = model.startChat({
             history: [
                 { role: 'user', parts: [{ text: `INSTRUCTION: ${systemPrompt}` }] },
                 { role: 'model', parts: [{ text: `Understood. Hi ${currentUser.name}. I am your Reflection Coach. I'm ready to listen and help you explore your connection journey.` }] }
@@ -118,8 +119,9 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
         setIsProcessing(true);
 
         try {
-            const response = await chat.sendMessage({ message: userText });
-            const modelText = response.text || "";
+            const result = await chat.sendMessage(userText);
+            const response = await result.response;
+            const modelText = response.text() || "";
             setMessages(prev => [...prev, { role: 'model', text: modelText }]);
 
             // Check for summary blocks to create journal entries

@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { termsData } from '../constants';
 import { Bookmark } from '../types';
-import { GoogleAuthProvider, signInWithPopup, signInAnonymously } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signInWithRedirect, getRedirectResult } from 'firebase/auth';
 import { auth } from '../firebase';
 import { generateRSAKeyPair, exportPublicKey, exportPrivateKey } from '../utils/encryption';
 
@@ -42,7 +42,7 @@ const tourSteps = [
 const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'age', initialName = '', initialEmail = '' }) => {
     const [name, setName] = useState(initialName);
     const [email, setEmail] = useState(initialEmail);
-    const [step, setStep] = useState<'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour'>(initialStep);
+    const [step, setStep] = useState<'loading' | 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour'>('loading');
 
     const [selectedSpice, setSelectedSpice] = useState<string | null>(null);
     const [selectedTermIds, setSelectedTermIds] = useState<number[]>([]);
@@ -101,22 +101,109 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
         );
     };
 
+    const [authError, setAuthError] = useState<string | null>(null);
+
+    // Initial Auth Check (Prevents Flash of 18+ screen and fixes race condition)
+    useEffect(() => {
+        let mounted = true;
+
+        const checkAuth = async () => {
+            console.log("Checking auth status...");
+
+            // Create promises for both checks
+            const redirectPromise = getRedirectResult(auth).catch(e => {
+                console.error("Redirect Check Error:", e);
+                return null;
+            });
+
+            const authStatePromise = new Promise<any>((resolve) => {
+                const unsub = auth.onAuthStateChanged((user) => {
+                    unsub();
+                    resolve(user);
+                });
+            });
+
+            // Safety timeout (3 seconds max)
+            const timeoutPromise = new Promise<null>((resolve) => {
+                setTimeout(() => resolve(null), 3000);
+            });
+
+            // Race the checks against timeout
+            try {
+                // We wait for both checks OR the timeout
+                // Actually, we want to wait for checking to complete, but if it takes too long, give up.
+                // Promise.all is better, but Wrapped in a race with timeout.
+
+                const results = await Promise.race([
+                    Promise.all([redirectPromise, authStatePromise]),
+                    timeoutPromise
+                ]);
+
+                if (!mounted) return;
+
+                if (!results) {
+                    // Timeout hit
+                    console.log("Auth check timed out. Defaulting to age gate.");
+                    setStep('age');
+                    return;
+                }
+
+                const [redirectResult, authUser] = results;
+
+                if (redirectResult && redirectResult.user) {
+                    console.log("Redirect Login Success:", redirectResult.user);
+                    if (redirectResult.user.displayName) setName(redirectResult.user.displayName.split(' ')[0]);
+                    if (redirectResult.user.email) setEmail(redirectResult.user.email);
+                    setStep('name');
+                    return;
+                }
+
+                if (authUser) {
+                    console.log("Found active session (silent):", authUser);
+                    if (authUser.displayName) setName(authUser.displayName.split(' ')[0]);
+                    if (authUser.email) setEmail(authUser.email);
+                    setStep('name');
+                } else {
+                    console.log("No user found. Showing Age Gate.");
+                    setStep('age');
+                }
+
+            } catch (e) {
+                console.error("Auth Check Critical Error:", e);
+                if (mounted) setStep('age');
+            }
+        };
+
+        checkAuth();
+        return () => { mounted = false; };
+    }, []);
+
     const handleGoogleLogin = async () => {
+        setAuthError(null);
         try {
             const provider = new GoogleAuthProvider();
             const result = await signInWithPopup(auth, provider);
             // Auto-fill details if available
             if (result.user.displayName) setName(result.user.displayName.split(' ')[0]);
             if (result.user.email) setEmail(result.user.email);
-            setStep('name'); // Advance to name confirmation/input
-        } catch (error) {
+            setStep('name');
+        } catch (error: any) {
             console.error("Google Sign In Error:", error);
-            alert("Could not sign in with Google. Please try again.");
+            const errMsg = error.message || "Could not sign in with Google.";
+            setAuthError(errMsg);
+
+            if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/popup-blocked') {
+                setAuthError("Popup blocked. Try the 'Redirect Login' button below.");
+            }
         }
     };
 
+    const handleGoogleRedirect = () => {
+        const provider = new GoogleAuthProvider();
+        signInWithRedirect(auth, provider);
+    };
+
     const handleDemo = async (who: 'Jane' | 'John') => {
-        // Bypass auth for instant demo access
         onSetupComplete(`${who} Doe 1234`, true, `${who.toLowerCase()}doe @testemail.com`);
     };
 
@@ -135,6 +222,13 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                     </button>
                 )}
 
+                {step === 'loading' && (
+                    <div className="flex flex-col items-center justify-center space-y-4 animate-pulse">
+                        <img src="/Logo-V2.svg" alt="Loading" className="w-20 opacity-50" />
+                        <p className="text-sm font-bold text-gray-400 tracking-widest uppercase">Checking Access...</p>
+                    </div>
+                )}
+
                 {step === 'age' && (
                     <div className="space-y-8 animate-in fade-in duration-500">
                         <div className="text-center mb-10">
@@ -150,6 +244,20 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                     <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
                         <div className="text-5xl">🔐</div>
                         <h1 className="text-3xl font-serif font-bold text-gray-800">Choose Access</h1>
+
+                        {authError && (
+                            <div className="space-y-2">
+                                <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl border border-red-100">
+                                    {authError}
+                                </div>
+                                <button
+                                    onClick={handleGoogleRedirect}
+                                    className="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded-[1rem] text-sm hover:bg-blue-100 transition"
+                                >
+                                    Login via Redirect (Mobile Fix)
+                                </button>
+                            </div>
+                        )}
 
                         <button
                             onClick={handleGoogleLogin}

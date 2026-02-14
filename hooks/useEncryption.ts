@@ -20,7 +20,7 @@ export interface EncryptionState {
     publicKey: CryptoKey | null;
     publicKeyBase64: string | null;
     sharedKey: CryptoKey | null;
-    status: 'locked' | 'unlocked' | 'initializing' | 'no-keys';
+    status: 'locked' | 'unlocked' | 'initializing' | 'no-keys' | 'broken-identity';
 }
 
 const STORAGE_KEY_PRIVATE = 'couple_currency_private_key';
@@ -84,8 +84,51 @@ export const useEncryption = (userUid: string | undefined) => {
                         setState(prev => ({ ...prev, sharedKey, status: 'unlocked' }));
                     } catch (e) {
                         console.error("Failed to unlock shared key:", e);
+
+                        // FALLBACK: Try Legacy Key if available (Self-Healing)
+                        if (data.sharedKeyBase64) {
+                            console.log("⚠️ Attempting Legacy Fallback & Repair...");
+                            try {
+                                const legacyKey = await importKeyOld(data.sharedKeyBase64);
+
+                                // REPAIR: Generate NEW Identity ensuring we match
+                                const newKeyPair = await generateRSAKeyPair();
+                                const newPubBase64 = await exportPublicKey(newKeyPair.publicKey);
+                                const newPrivBase64 = await exportPrivateKey(newKeyPair.privateKey);
+
+                                // 1. Save New Private Key
+                                localStorage.setItem(`${STORAGE_KEY_PRIVATE}_${userUid}`, newPrivBase64);
+
+                                // 2. Wrap Legacy Key with NEW Public Key
+                                const wrapped = await wrapAESKey(legacyKey, newKeyPair.publicKey);
+
+                                // 3. Update Firestore
+                                await updateDoc(userRef, {
+                                    publicKey: newPubBase64,
+                                    encryptedSharedKey: wrapped
+                                });
+
+                                console.log("✅ Identity Repaired using Legacy Key!");
+
+                                setState(prev => ({
+                                    ...prev,
+                                    sharedKey: legacyKey,
+                                    privateKey: newKeyPair.privateKey,
+                                    publicKey: newKeyPair.publicKey,
+                                    publicKeyBase64: newPubBase64,
+                                    status: 'unlocked'
+                                }));
+                                return; // Exit logic, we are good
+                            } catch (legacyErr) {
+                                console.error("Legacy fallback failed:", legacyErr);
+                            }
+                        }
+
+                        setState(prev => ({ ...prev, status: 'broken-identity' }));
                     }
-                } else if (data.sharedKeyBase64) {
+                }
+
+                if (state.status !== 'unlocked' && data.sharedKeyBase64 && !data.encryptedSharedKey) {
                     // LEGACY: Import old key & Migrate
                     try {
                         const sharedKey = await importKeyOld(data.sharedKeyBase64);
@@ -293,6 +336,32 @@ export const useEncryption = (userUid: string | undefined) => {
         }
     };
 
+    // 7. Emergency Reset (Fix Broken Identity)
+    const resetEncryptionIdentity = async () => {
+        if (!userUid) return;
+
+        console.warn("RESETTING ENCRYPTION IDENTITY");
+        // 1. Clear Local Storage
+        localStorage.removeItem(`${STORAGE_KEY_PRIVATE}_${userUid}`);
+
+        // 2. Generate New Identity
+        try {
+            const newPubBase64 = await generateIdentity();
+
+            // 3. Update Firestore (Clear old encrypted keys)
+            const userRef = doc(db, 'users', userUid);
+            await updateDoc(userRef, {
+                publicKey: newPubBase64,
+                encryptedSharedKey: null, // Nuke the old broken key
+                sharedKeyBase64: null // Nuke legacy key
+            });
+
+            window.location.reload();
+        } catch (e) {
+            console.error("Failed to reset identity:", e);
+        }
+    };
+
     return {
         ...state,
         generateIdentity,
@@ -300,6 +369,7 @@ export const useEncryption = (userUid: string | undefined) => {
         backupIdentity,
         restoreIdentity,
         generateSyncCode,
-        consumeSyncCode
+        consumeSyncCode,
+        resetEncryptionIdentity
     };
 };

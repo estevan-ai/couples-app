@@ -121,7 +121,7 @@ const BountyCard: React.FC<BountyCardProps> = ({
     }
 
     return (
-        <div className={`bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 border-l-4 ${borderColor()} transition-all hover:shadow-md`}>
+        <div id={`bounty-${bounty.id}`} className={`bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 border-l-4 ${borderColor()} transition-all hover:shadow-md`}>
             <div className="mb-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Requested Task</p>
                 <p className="text-gray-800 text-lg font-serif">{bounty.task}</p>

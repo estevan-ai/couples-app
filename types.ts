@@ -37,6 +37,10 @@ export interface User {
   sharedKeyBase64?: string; // Legacy: Encrypted Shared Key (if no partner) or raw (bad)
   encryptedSharedKey?: string; // New: Wrapped Shared Key (RSA-OAEP)
   sharingSettings?: SharingSettings;
+  // AI Customization
+  relationshipContext?: string; // e.g., "Long distance, new parents"
+  workingOn?: string; // e.g., "Communication", "Intimacy", "Trust"
+  agentPersona?: string; // e.g., "Be funny, focus on biblical values"
 }
 
 export interface Message {

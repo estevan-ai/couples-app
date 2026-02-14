@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { GoogleGenAI, Chat } from '@google/genai';
+import { GoogleGenerativeAI, ChatSession } from '@google/generative-ai';
 import { Term } from '../types';
 
 interface Message {
@@ -17,7 +17,7 @@ interface TermAIDeepDiveProps {
 
 const TermAIDeepDive: React.FC<TermAIDeepDiveProps> = ({ isOpen, onClose, term, isDemo = false }) => {
     const [messages, setMessages] = useState<Message[]>([]);
-    const [chat, setChat] = useState<Chat | null>(null);
+    const [chat, setChat] = useState<ChatSession | null>(null);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -53,15 +53,15 @@ const TermAIDeepDive: React.FC<TermAIDeepDiveProps> = ({ isOpen, onClose, term, 
             if (!apiKey) {
                 throw new Error("Missing VITE_GOOGLE_AI_KEY in environment variables.");
             }
-            const ai = new GoogleGenAI({ apiKey, apiVersion: 'v1beta' });
+            const ai = new GoogleGenerativeAI(apiKey);
             const systemPrompt = `You are a specialist in intimacy and relationship communication. 
             Your goal is to help a couple explore the specific term "${term.name}" safely and joyfully. 
             The category is "${term.category}". 
             Keep your tone warm, expert, and deeply non-judgmental. 
             Format your advice like a practical "How-To Manual" for a high-end workshop.`;
 
-            const newChat = ai.chats.create({
-                model: 'gemini-3-flash-preview',
+            const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
+            const newChat = model.startChat({
                 history: [
                     { role: 'user', parts: [{ text: `INSTRUCTION: ${systemPrompt}` }] },
                     { role: 'model', parts: [{ text: "Understood. I have prepared your deep dive manual. I'm ready to explain the importance and practical application of this term." }] }
@@ -70,8 +70,9 @@ const TermAIDeepDive: React.FC<TermAIDeepDiveProps> = ({ isOpen, onClose, term, 
             setChat(newChat);
 
             const initialPrompt = `Provide a 3-paragraph "Deep Dive" guide for "${term.name}".`;
-            const response = await newChat.sendMessage({ message: initialPrompt });
-            setMessages([{ role: 'model', text: response.text || "" }]);
+            const result = await newChat.sendMessage(initialPrompt);
+            const response = await result.response;
+            setMessages([{ role: 'model', text: response.text() || "" }]);
         } catch (error: any) {
             console.error("Guide Initialization Error:", error);
             setMessages([{ role: 'model', text: `I'm having trouble connecting to the guide: ${error?.message || "Check your API key or connection."}` }]);
@@ -115,8 +116,9 @@ const TermAIDeepDive: React.FC<TermAIDeepDiveProps> = ({ isOpen, onClose, term, 
         }
 
         try {
-            const response = await chat.sendMessage({ message: prompt });
-            setMessages(prev => [...prev, { role: 'model', text: response.text || "" }]);
+            const result = await chat.sendMessage(prompt);
+            const response = await result.response;
+            setMessages(prev => [...prev, { role: 'model', text: response.text() || "" }]);
         } catch (error) {
             setMessages(prev => [...prev, { role: 'model', text: "Sorry, I lost my train of thought. Can you ask that again?" }]);
         } finally {

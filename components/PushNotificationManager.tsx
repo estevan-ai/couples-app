@@ -10,12 +10,22 @@ interface PushManagerProps {
 export const PushNotificationManager: React.FC<PushManagerProps> = ({ currentUser }) => {
     const [status, setStatus] = useState<string>('');
     const [loading, setLoading] = useState(false);
+    const [permissionState, setPermissionState] = useState(Notification.permission);
+
+    React.useEffect(() => {
+        if (Notification.permission === 'granted') {
+            // Optional: silent token refresh if needed, for now just show state
+            setStatus("Active");
+        }
+    }, []);
 
     const handleEnable = async () => {
         setLoading(true);
         setStatus('');
         try {
             const permission = await Notification.requestPermission();
+            setPermissionState(permission);
+
             if (permission === 'granted') {
                 const msg = await messaging();
                 if (msg) {
@@ -47,7 +57,7 @@ export const PushNotificationManager: React.FC<PushManagerProps> = ({ currentUse
                         await setDoc(doc(db, 'users', currentUser.uid), {
                             fcmTokens: arrayUnion(token)
                         }, { merge: true });
-                        setStatus("Notifications Enabled!");
+                        setStatus("Active");
                     } else {
                         setStatus("Failed to get token.");
                     }
@@ -74,10 +84,10 @@ export const PushNotificationManager: React.FC<PushManagerProps> = ({ currentUse
                 </div>
                 <button
                     onClick={handleEnable}
-                    disabled={loading}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold shadow-sm hover:scale-105 transition disabled:opacity-50"
+                    disabled={loading || permissionState === 'granted'}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition disabled:opacity-50 ${permissionState === 'granted' ? 'bg-green-100 text-green-700' : 'bg-purple-600 text-white hover:scale-105'}`}
                 >
-                    {loading ? '...' : 'Enable'}
+                    {loading ? '...' : permissionState === 'granted' ? 'Enabled' : 'Enable'}
                 </button>
             </div>
 
@@ -87,21 +97,6 @@ export const PushNotificationManager: React.FC<PushManagerProps> = ({ currentUse
                 </div>
             )}
 
-            <button
-                onClick={() => {
-                    new Notification("Test Notification", {
-                        body: "If you see this, local notifications are working!",
-                        icon: "/Logo-V2.svg"
-                    });
-                }}
-                className="w-full py-2 bg-white text-purple-600 rounded-lg text-xs font-bold border border-purple-200 hover:bg-purple-100 transition mb-2"
-            >
-                🔔 Send Local Test Notification
-            </button>
-
-            <p className="text-[10px] text-purple-400 text-center">
-                To test real pushes, use the Firebase Console with the token saved to your profile.
-            </p>
         </div>
     );
 };
