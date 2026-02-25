@@ -2,6 +2,7 @@
 import React from 'react';
 import { Bounty, ChatterNote, Bookmark } from '../types';
 import BountyCard from './BountyCard';
+import BountyModal from './BountyModal';
 import { User } from '../types';
 import { termsData } from '../constants';
 
@@ -27,7 +28,7 @@ interface BountyBoardProps {
 const BountyBoard: React.FC<BountyBoardProps> = ({
     bounties, currentUser, onToggleStatus, onClaimBounty, chatter, onAddNote, bookmarks, onAddBounty, onDeleteBounty, onUpdateBounty, onArchiveBounty, onDeleteNote, onEditNote, highlightedBountyId, partnerBookmarks = {}
 }) => {
-    const [activeTab, setActiveTab] = React.useState<'shared' | 'offers' | 'archives'>('shared');
+    const [activeTab, setActiveTab] = React.useState<'shared' | 'bank' | 'offers' | 'archives'>('shared');
     const [willWorkForTab, setWillWorkForTab] = React.useState<'mine' | 'partner' | 'partner_offers'>('mine');
     const [showGuide, setShowGuide] = React.useState(false);
 
@@ -51,9 +52,32 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
     const [offerTerm, setOfferTerm] = React.useState<number | null>(null);
     const [offerTask, setOfferTask] = React.useState('');
 
+    // Redemption State
+    const [redeemingId, setRedeemingId] = React.useState<number | string | null>(null);
+    const [redemptionDate, setRedemptionDate] = React.useState('');
+    const [redemptionNote, setRedemptionNote] = React.useState('');
+
+    const handleStartRedemption = (bountyId: number | string) => {
+        setRedeemingId(bountyId);
+        setRedemptionDate('');
+        setRedemptionNote('');
+    };
+
+    const handleConfirmRedemption = (bountyId: number | string) => {
+        if (!redemptionDate.trim()) {
+            alert('Please specify when you want to redeem this.');
+            return;
+        }
+        onUpdateBounty(bountyId, {
+            status: 'redemption_pending',
+            redemptionDetails: { requestedDate: Date.now(), note: `${redemptionDate} - ${redemptionNote || ''}` }
+        });
+        setRedeemingId(null);
+    };
+
     const availableBounties = bounties.filter(b => b.status === 'available');
     const myBounties = bounties.filter(b => b.status === 'claimed' && b.claimedBy === currentUser.name);
-    const doneBounties = bounties.filter(b => b.status === 'done');
+    const doneBounties = bounties.filter(b => ['done', 'banked', 'redemption_pending', 'redeemed'].includes(b.status));
     const [showFullArchive, setShowFullArchive] = React.useState(false);
     const archivedBounties = bounties.filter(b => b.status === 'archived');
 
@@ -102,13 +126,13 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                 <p className="text-lg text-gray-500 max-w-3xl mx-auto">Collaborate on tasks and rewards.</p>
                 <div className="flex justify-center gap-4 mt-6">
                     <div className="bg-gray-100 p-1 rounded-2xl inline-flex overflow-x-auto max-w-full scrollbar-hide">
-                        {['shared', 'offers', 'archives'].map((tab) => (
+                        {['shared', 'bank', 'offers', 'archives'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab as any)}
                                 className={`px-6 py-2 rounded-xl font-bold transition-all text-sm whitespace-nowrap ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                             >
-                                {tab === 'shared' ? 'Active Favors' : tab === 'offers' ? 'Will Work For...' : 'Archives'}
+                                {tab === 'shared' ? 'Active Favors' : tab === 'bank' ? 'The Bank' : tab === 'offers' ? 'Will Work For...' : 'Archives'}
                             </button>
                         ))}
                     </div>
@@ -116,9 +140,13 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
             </header>
 
             {activeTab === 'shared' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {/* 1. Available Favors */}
                     <section>
-                        <h2 className="text-xl font-serif font-bold text-blue-600 mb-6 flex items-center gap-2">Available <span className="text-xs bg-blue-100 px-2 py-0.5 rounded-full">{availableBounties.length}</span></h2>
+                        <h2 className="text-xl font-serif font-bold text-blue-600 mb-2 flex items-center gap-2">Available <span className="text-xs bg-blue-100 px-2 py-0.5 rounded-full">{availableBounties.length}</span></h2>
+                        <p className="text-xs text-blue-800 bg-blue-50 p-3 rounded-xl mb-6 border border-blue-100">
+                            <strong>🎟️ Up for grabs:</strong> Claim these tasks to earn the reward.
+                        </p>
                         {availableBounties.length > 0 ? (
                             <div className="space-y-6">{availableBounties.map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}</div>
                         ) : (
@@ -129,8 +157,13 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                             </div>
                         )}
                     </section>
+
+                    {/* 2. My To-Do */}
                     <section>
-                        <h2 className="text-xl font-serif font-bold text-orange-600 mb-6 flex items-center gap-2">My To-Do <span className="text-xs bg-orange-100 px-2 py-0.5 rounded-full">{myBounties.length}</span></h2>
+                        <h2 className="text-xl font-serif font-bold text-orange-600 mb-2 flex items-center gap-2">My To-Do <span className="text-xs bg-orange-100 px-2 py-0.5 rounded-full">{myBounties.length}</span></h2>
+                        <p className="text-xs text-orange-800 bg-orange-50 p-3 rounded-xl mb-6 border border-orange-100">
+                            <strong>🎯 Your Mission:</strong> Complete these to bank the rewards.
+                        </p>
                         {myBounties.length > 0 ? (
                             <div className="space-y-6">{myBounties.map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}</div>
                         ) : (
@@ -140,17 +173,226 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                             </div>
                         )}
                     </section>
+
+                    {/* 3. Partner's To-Do (NEW) */}
                     <section>
-                        <h2 className="text-xl font-serif font-bold text-green-600 mb-6 flex items-center gap-2">Completed <span className="text-xs bg-green-100 px-2 py-0.5 rounded-full">{doneBounties.length}</span></h2>
-                        {doneBounties.length > 0 ? (
-                            <div className="space-y-6 opacity-80">
-                                {doneBounties.slice(0, 5).map(b => <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />)}
-                                {doneBounties.length > 5 && <button onClick={() => setActiveTab('archives')} className="w-full py-3 text-center text-gray-400 text-sm font-bold bg-gray-50 rounded-2xl hover:bg-gray-100 transition">View All {doneBounties.length} Completed</button>}
+                        <h2 className="text-xl font-serif font-bold text-purple-600 mb-2 flex items-center gap-2">Partner's To-Do <span className="text-xs bg-purple-100 px-2 py-0.5 rounded-full">{bounties.filter(b => b.status === 'claimed' && b.claimedBy !== currentUser.name).length}</span></h2>
+                        <p className="text-xs text-purple-800 bg-purple-50 p-3 rounded-xl mb-6 border border-purple-100">
+                            <strong>👀 Watch List:</strong> Partner is working on these for you!
+                        </p>
+                        {bounties.filter(b => b.status === 'claimed' && b.claimedBy !== currentUser.name).length > 0 ? (
+                            <div className="space-y-6 opacity-90">
+                                {bounties.filter(b => b.status === 'claimed' && b.claimedBy !== currentUser.name).map(b => (
+                                    <BountyCard key={b.id} bounty={b} currentUser={currentUser} onClaim={onClaimBounty} onToggleStatus={onToggleStatus} chatter={chatter} onAddNote={onAddNote} onDelete={onDeleteBounty} onUpdate={onUpdateBounty} onArchive={onArchiveBounty} onDeleteNote={onDeleteNote} onEditNote={onEditNote} isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()} />
+                                ))}
                             </div>
                         ) : (
-                            <div className="text-center py-20 px-6 bg-white border-2 border-dashed border-gray-100 rounded-[2.5rem]"><div className="text-4xl mb-4 opacity-20">✅</div><p className="text-gray-400 font-bold text-sm">No completed favors yet.</p></div>
+                            <div className="text-center py-20 px-6 bg-white border-2 border-dashed border-gray-100 rounded-[2.5rem]">
+                                <div className="text-4xl mb-4 opacity-20">👀</div>
+                                <p className="text-gray-400 font-bold text-sm">Partner has no claimed favors.</p>
+                            </div>
                         )}
                     </section>
+
+
+                </div>
+            )}
+
+            {activeTab === 'bank' && (
+                <div className="max-w-4xl mx-auto space-y-12">
+                    {/* Header */}
+                    <div className="bg-green-50 border border-green-100 p-8 rounded-[2.5rem] text-center">
+                        <h2 className="text-3xl font-serif font-bold text-green-800 mb-2">The Bank</h2>
+                        <p className="text-green-600 max-w-xl mx-auto">Where rewards are stored and redeemed.</p>
+                        <div className="mt-4 flex justify-center gap-8 text-sm font-bold text-green-700/60">
+                            <div>🏦 You Have: <span className="text-green-800 text-lg">{doneBounties.filter(b => b.claimedBy === currentUser.name && ['banked', 'done'].includes(b.status)).length}</span> Rewards</div>
+                            <div>🤝 Parnter Has: <span className="text-green-800 text-lg">{doneBounties.filter(b => b.claimedBy !== currentUser.name && ['banked', 'done'].includes(b.status)).length}</span> Credits</div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* LEFT COLUMN: My Spendable Rewards */}
+                        <section className="bg-white p-6 rounded-[2rem] shadow-sm border border-green-100">
+                            <h3 className="text-lg font-black text-green-800 uppercase tracking-wide mb-6 flex items-center gap-2">
+                                💎 My Spendable Rewards
+                                <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">{doneBounties.filter(b => b.claimedBy === currentUser.name && ['banked', 'done'].includes(b.status)).length}</span>
+                            </h3>
+
+                            <div className="space-y-6">
+                                {doneBounties.filter(b => b.claimedBy === currentUser.name).length > 0 ? (
+                                    doneBounties.filter(b => b.claimedBy === currentUser.name).map(b => (
+                                        <div key={b.id} className="relative group border-b border-gray-50 pb-6 last:border-0 last:pb-0">
+                                            <BountyCard
+                                                bounty={b}
+                                                currentUser={currentUser}
+                                                onClaim={onClaimBounty}
+                                                onToggleStatus={onToggleStatus}
+                                                chatter={chatter}
+                                                onAddNote={onAddNote}
+                                                onDelete={onDeleteBounty}
+                                                onUpdate={onUpdateBounty}
+                                                onArchive={onArchiveBounty}
+                                                onDeleteNote={onDeleteNote}
+                                                onEditNote={onEditNote}
+                                                isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()}
+                                            />
+
+                                            {/* REDEMPTION ACTION AREA */}
+                                            <div className="mt-4 pl-2">
+                                                {(b.status === 'banked' || b.status === 'done') && (
+                                                    redeemingId === b.id ? (
+                                                        <div className="bg-green-50 border border-green-200 rounded-xl p-4 shadow-sm animate-in fade-in zoom-in-95 duration-200">
+                                                            <p className="text-xs font-bold text-green-800 mb-3 flex items-center gap-2">👇 When do you want this?</p>
+                                                            <input
+                                                                autoFocus
+                                                                className="w-full text-sm border border-green-200 rounded-lg p-2.5 mb-2 focus:ring-2 focus:ring-green-500 outline-none bg-white"
+                                                                placeholder="e.g. Friday Night, Next Weekend"
+                                                                value={redemptionDate}
+                                                                onChange={e => setRedemptionDate(e.target.value)}
+                                                            />
+                                                            <textarea
+                                                                className="w-full text-sm border border-green-200 rounded-lg p-2.5 mb-3 focus:ring-2 focus:ring-green-500 outline-none bg-white resize-none"
+                                                                placeholder="Add details (optional)..."
+                                                                rows={2}
+                                                                value={redemptionNote}
+                                                                onChange={e => setRedemptionNote(e.target.value)}
+                                                            />
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => handleConfirmRedemption(b.id)}
+                                                                    className="flex-1 bg-green-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-green-700 transition shadow-sm"
+                                                                >
+                                                                    Confirm Redemption
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setRedeemingId(null)}
+                                                                    className="px-4 bg-white border border-gray-200 text-gray-500 text-sm font-bold py-2.5 rounded-xl hover:bg-gray-50 transition"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex justify-end">
+                                                            <button
+                                                                onClick={() => handleStartRedemption(b.id)}
+                                                                className="bg-green-600 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-sm hover:bg-green-700 transition flex items-center gap-2"
+                                                            >
+                                                                <span>🏦</span> Cash In / Redeem
+                                                            </button>
+                                                        </div>
+                                                    )
+                                                )}
+
+                                                {b.status === 'redemption_pending' && (
+                                                    <div className="bg-yellow-50 text-yellow-800 px-4 py-3 rounded-xl text-sm border border-yellow-100 flex items-start gap-3">
+                                                        <span className="text-xl">⏳</span>
+                                                        <div>
+                                                            <span className="font-bold block">Redemption Requested</span>
+                                                            <span className="opacity-80 block mt-1">{b.redemptionDetails?.note}</span>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {b.status === 'redeemed' && (
+                                                    <div className="flex items-center justify-end gap-2 text-gray-400 mt-2">
+                                                        <span className="text-xs font-bold">✅ Redeemed</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                        <div className="text-4xl mb-2 opacity-30">💸</div>
+                                        <p className="font-bold text-sm">Your bank is empty.</p>
+                                        <p className="text-xs mt-1">Complete tasks to earn rewards!</p>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+
+                        {/* RIGHT COLUMN: Partner's Credits */}
+                        <section className="bg-gray-50 p-6 rounded-[2rem] border border-gray-100">
+                            <h3 className="text-lg font-black text-gray-500 uppercase tracking-wide mb-6 flex items-center gap-2">
+                                🔒 Partner's Credits
+                                <span className="bg-gray-200 text-gray-600 text-xs px-2 py-0.5 rounded-full">{doneBounties.filter(b => b.claimedBy !== currentUser.name).length}</span>
+                            </h3>
+
+                            <div className="space-y-6 opacity-90">
+                                {doneBounties.filter(b => b.claimedBy !== currentUser.name).length > 0 ? (
+                                    doneBounties.filter(b => b.claimedBy !== currentUser.name).map(b => (
+                                        <div key={b.id} className="relative group bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                                            <BountyCard
+                                                bounty={b}
+                                                currentUser={currentUser}
+                                                onClaim={onClaimBounty}
+                                                onToggleStatus={onToggleStatus}
+                                                chatter={chatter}
+                                                onAddNote={onAddNote}
+                                                onDelete={onDeleteBounty}
+                                                onUpdate={onUpdateBounty}
+                                                onArchive={onArchiveBounty}
+                                                onDeleteNote={onDeleteNote}
+                                                onEditNote={onEditNote}
+                                                isHighlighted={b.id === highlightedBountyId || b.id.toString() === highlightedBountyId?.toString()}
+                                            />
+
+                                            <div className="mt-3 border-t border-gray-50 pt-3">
+                                                {(b.status === 'banked' || b.status === 'done') && (
+                                                    <div className="flex items-center gap-2 text-gray-400 text-xs font-bold justify-end">
+                                                        <span>🔒</span> In Partner's Bank
+                                                    </div>
+                                                )}
+
+                                                {b.status === 'redemption_pending' && (
+                                                    <div className="w-full bg-yellow-50 border border-yellow-200 p-4 rounded-xl animate-in fade-in slide-in-from-bottom-2">
+                                                        <div className="flex items-start gap-3 mb-3">
+                                                            <span className="text-2xl">🔔</span>
+                                                            <div>
+                                                                <span className="text-sm font-bold text-yellow-800 block">Redemption Request</span>
+                                                                <span className="text-xs text-yellow-700 mt-1 block">{b.redemptionDetails?.note}</span>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (confirm("Approve this redemption?")) {
+                                                                    onUpdateBounty(b.id, { status: 'redeemed' });
+                                                                }
+                                                            }}
+                                                            className="w-full bg-yellow-400 text-yellow-900 text-xs font-bold py-2 rounded-lg hover:bg-yellow-500 transition shadow-sm"
+                                                        >
+                                                            Approve Redemption
+                                                        </button>
+                                                    </div>
+                                                )}
+
+                                                {b.status === 'redeemed' && (
+                                                    <div className="flex justify-between items-center bg-gray-50 p-2 rounded-lg border border-gray-100">
+                                                        <span className="text-xs text-gray-500 font-bold">✅ Redeemed</span>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (confirm("Archive this forever?")) {
+                                                                    onArchiveBounty(b.id);
+                                                                }
+                                                            }}
+                                                            className="text-gray-400 hover:text-red-500 text-xs underline"
+                                                        >
+                                                            Archive
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="text-center py-12 text-gray-400">
+                                        <p className="font-bold text-sm">Partner has no credits.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    </div>
                 </div>
             )}
 
@@ -198,31 +440,12 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                                         </div>
                                         <p className="text-sm text-gray-500 mb-6 line-clamp-2">{term.definition}</p>
 
-                                        {offerTerm === term.id ? (
-                                            <div className="bg-gray-50 p-4 rounded-xl animate-in zoom-in-95 duration-200">
-                                                <p className="text-xs font-bold text-gray-400 uppercase mb-2">
-                                                    {willWorkForTab === 'mine' ? 'I will...' : willWorkForTab === 'partner' ? 'I will grant this if you...' : 'Partner must...'}
-                                                </p>
-                                                <input
-                                                    autoFocus
-                                                    value={offerTask}
-                                                    onChange={e => setOfferTask(e.target.value)}
-                                                    placeholder={willWorkForTab === 'mine' ? "e.g. Do the dishes..." : willWorkForTab === 'partner' ? "e.g. Give me a massage..." : "e.g. Clean the garage..."}
-                                                    className="w-full bg-white border border-gray-200 rounded-lg px-4 py-2 mb-3 text-sm focus:ring-2 focus:ring-purple-500 outline-none"
-                                                    onKeyDown={e => e.key === 'Enter' && handleCreateOffer(term.id)}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => handleCreateOffer(term.id)} className="flex-grow bg-purple-600 text-white py-2 rounded-lg font-bold text-xs hover:bg-purple-700 transition">
-                                                        {willWorkForTab === 'mine' ? 'Post Offer' : willWorkForTab === 'partner' ? 'Create Favor' : 'Assign Task'}
-                                                    </button>
-                                                    <button onClick={() => { setOfferTerm(null); setOfferTask(''); }} className="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg font-bold text-xs hover:bg-gray-300 transition">Cancel</button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <button onClick={() => setOfferTerm(term.id)} className={`w-full py-3 rounded-xl font-bold text-sm hover:opacity-80 transition border ${willWorkForTab === 'mine' ? 'bg-purple-50 text-purple-700 border-purple-100' : willWorkForTab === 'partner' ? 'bg-pink-50 text-pink-700 border-pink-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}>
-                                                {willWorkForTab === 'mine' ? 'Will Work For This' : willWorkForTab === 'partner' ? 'Create Favor For This' : 'Assign Task for This'}
-                                            </button>
-                                        )}
+                                        <button
+                                            onClick={() => setOfferTerm(term.id)}
+                                            className={`w-full py-3 rounded-xl font-bold text-sm hover:opacity-80 transition border ${willWorkForTab === 'mine' ? 'bg-purple-50 text-purple-700 border-purple-100' : willWorkForTab === 'partner' ? 'bg-pink-50 text-pink-700 border-pink-100' : 'bg-indigo-50 text-indigo-700 border-indigo-100'}`}
+                                        >
+                                            {willWorkForTab === 'mine' ? 'Will Work For This' : willWorkForTab === 'partner' ? 'Create Favor For This' : 'Assign Task for This'}
+                                        </button>
                                     </div>
                                 );
                             })
@@ -230,6 +453,8 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                     </div>
                 </div>
             )}
+
+            <BountyModal isOpen={!!offerTerm} onClose={() => setOfferTerm(null)} term={termsData.find(t => t.id === offerTerm)} onAddBounty={onAddBounty} partnerBookmarks={partnerBookmarks} />
 
             {
                 activeTab === 'archives' && (
@@ -264,67 +489,69 @@ const BountyBoard: React.FC<BountyBoardProps> = ({
                     </div>
                 )
             }
-            {showGuide && (
-                <div
-                    className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
-                    onClick={() => setShowGuide(false)}
-                >
+            {
+                showGuide && (
                     <div
-                        className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-8 relative animate-in zoom-in-95 duration-200"
-                        onClick={e => e.stopPropagation()}
+                        className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+                        onClick={() => setShowGuide(false)}
                     >
-                        <button
-                            onClick={() => setShowGuide(false)}
-                            className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-500 transition"
+                        <div
+                            className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full p-8 relative animate-in zoom-in-95 duration-200"
+                            onClick={e => e.stopPropagation()}
                         >
-                            ✕
-                        </button>
+                            <button
+                                onClick={() => setShowGuide(false)}
+                                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-full text-gray-500 transition"
+                            >
+                                ✕
+                            </button>
 
-                        <div className="text-center mb-6">
-                            <span className="text-4xl mb-2 block">💡</span>
-                            <h2 className="text-2xl font-serif font-bold text-gray-800">How Favors Work</h2>
-                        </div>
+                            <div className="text-center mb-6">
+                                <span className="text-4xl mb-2 block">💡</span>
+                                <h2 className="text-2xl font-serif font-bold text-gray-800">How Favors Work</h2>
+                            </div>
 
-                        <div className="space-y-6">
-                            <div className="flex gap-4">
-                                <div className="text-2xl pt-1">🎟️</div>
-                                <div>
-                                    <h3 className="font-bold text-gray-800">Available Favors</h3>
-                                    <p className="text-sm text-gray-500 leading-relaxed">
-                                        These are rewards that have been created. If you see a task you can do,
-                                        <strong> Claim it!</strong> Once you complete the task, you get the reward.
-                                    </p>
+                            <div className="space-y-6">
+                                <div className="flex gap-4">
+                                    <div className="text-2xl pt-1">🎟️</div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800">Available Favors</h3>
+                                        <p className="text-sm text-gray-500 leading-relaxed">
+                                            These are rewards that have been created. If you see a task you can do,
+                                            <strong> Claim it!</strong> Once you complete the task, you get the reward.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4">
+                                    <div className="text-2xl pt-1">🤝</div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-800">Will Work For...</h3>
+                                        <p className="text-sm text-gray-500 leading-relaxed mb-2">
+                                            This section helps you negotiate for things you or your partner want.
+                                        </p>
+                                        <ul className="text-xs text-gray-500 space-y-2 bg-gray-50 p-3 rounded-xl">
+                                            <li><strong>My Wishlist:</strong> Things you want. Offer a task ("I will cook") to get them.</li>
+                                            <li><strong>Partner's Goals:</strong> Things they want. Create a Favor ("If you cook...") to give it to them.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-700 font-bold text-center">
+                                    Tip: Don't see what you want? Use the (+) button in the Directory to add custom items!
                                 </div>
                             </div>
 
-                            <div className="flex gap-4">
-                                <div className="text-2xl pt-1">🤝</div>
-                                <div>
-                                    <h3 className="font-bold text-gray-800">Will Work For...</h3>
-                                    <p className="text-sm text-gray-500 leading-relaxed mb-2">
-                                        This section helps you negotiate for things you or your partner want.
-                                    </p>
-                                    <ul className="text-xs text-gray-500 space-y-2 bg-gray-50 p-3 rounded-xl">
-                                        <li><strong>My Wishlist:</strong> Things you want. Offer a task ("I will cook") to get them.</li>
-                                        <li><strong>Partner's Goals:</strong> Things they want. Create a Favor ("If you cook...") to give it to them.</li>
-                                    </ul>
-                                </div>
-                            </div>
-
-                            <div className="bg-blue-50 p-4 rounded-xl text-xs text-blue-700 font-bold text-center">
-                                Tip: Don't see what you want? Use the (+) button in the Directory to add custom items!
-                            </div>
+                            <button
+                                onClick={() => setShowGuide(false)}
+                                className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl mt-6 hover:bg-blue-700 transition"
+                            >
+                                Got it!
+                            </button>
                         </div>
-
-                        <button
-                            onClick={() => setShowGuide(false)}
-                            className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl mt-6 hover:bg-blue-700 transition"
-                        >
-                            Got it!
-                        </button>
                     </div>
-                </div>
-            )}
+                )
+            }
         </div >
     );
 };

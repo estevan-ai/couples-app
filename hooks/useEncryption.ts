@@ -25,7 +25,7 @@ export interface EncryptionState {
 
 const STORAGE_KEY_PRIVATE = 'couple_currency_private_key';
 
-export const useEncryption = (userUid: string | undefined) => {
+export const useEncryption = (userUid: string | undefined, userData?: any) => {
     const [state, setState] = useState<EncryptionState>({
         privateKey: null,
         publicKey: null,
@@ -33,6 +33,9 @@ export const useEncryption = (userUid: string | undefined) => {
         sharedKey: null,
         status: 'initializing'
     });
+
+    // Track internal errors for the UI
+    const [lastError, setLastError] = useState<string | null>(null);
 
     // 1. Load Keys on Mount
     useEffect(() => {
@@ -47,22 +50,18 @@ export const useEncryption = (userUid: string | undefined) => {
     const loadIdentity = async () => {
         try {
             // A. Try Local Storage for Private Key
-            // A. Try Local Storage for Private Key
             const storedPem = localStorage.getItem(`${STORAGE_KEY_PRIVATE}_${userUid}`);
             let privateKey: CryptoKey | null = null;
 
             if (storedPem) {
+                console.warn(`[useEncryption] Loaded Private Key starting with: ${storedPem.substring(0, 20)}...`);
                 privateKey = await importPrivateKey(storedPem);
-            } else {
-                console.log("No private key in storage. Checking remote for legacy status...");
             }
 
-            // B. Get Public Key from Firestore (User Profile)
-            const userRef = doc(db, 'users', userUid!);
-            const snap = await getDoc(userRef);
+            // B. Check userData or Fetch from Firestore
+            const data = userData || (userUid ? (await getDoc(doc(db, 'users', userUid))).data() : null);
 
-            if (snap.exists()) {
-                const data = snap.data();
+            if (data) {
                 // 1. Load Public Key if present
                 let publicKey: CryptoKey | null = null;
                 if (data.publicKey) {
@@ -74,6 +73,8 @@ export const useEncryption = (userUid: string | undefined) => {
                         publicKeyBase64: data.publicKey,
                         status: 'locked'
                     }));
+                } else {
+                    setState(prev => ({ ...prev, privateKey, status: 'no-keys' }));
                 }
 
                 // 2. Try to Unlock (Modern vs Legacy)
@@ -81,101 +82,32 @@ export const useEncryption = (userUid: string | undefined) => {
                     // MODERN: Unwrap with Identity
                     try {
                         const sharedKey = await unwrapAESKey(data.encryptedSharedKey, privateKey);
-                        setState(prev => ({ ...prev, sharedKey, status: 'unlocked' }));
+                        setState(prev => ({ ...prev, status: 'unlocked', sharedKey, privateKey, publicKey, publicKeyBase64: data.publicKey }));
+                        setLastError(null);
                     } catch (e) {
                         console.error("Failed to unlock shared key:", e);
-
-                        // FALLBACK: Try Legacy Key if available (Self-Healing)
-                        if (data.sharedKeyBase64) {
-                            console.log("⚠️ Attempting Legacy Fallback & Repair...");
-                            try {
-                                const legacyKey = await importKeyOld(data.sharedKeyBase64);
-
-                                // REPAIR: Generate NEW Identity ensuring we match
-                                const newKeyPair = await generateRSAKeyPair();
-                                const newPubBase64 = await exportPublicKey(newKeyPair.publicKey);
-                                const newPrivBase64 = await exportPrivateKey(newKeyPair.privateKey);
-
-                                // 1. Save New Private Key
-                                localStorage.setItem(`${STORAGE_KEY_PRIVATE}_${userUid}`, newPrivBase64);
-
-                                // 2. Wrap Legacy Key with NEW Public Key
-                                const wrapped = await wrapAESKey(legacyKey, newKeyPair.publicKey);
-
-                                // 3. Update Firestore
-                                await updateDoc(userRef, {
-                                    publicKey: newPubBase64,
-                                    encryptedSharedKey: wrapped
-                                });
-
-                                console.log("✅ Identity Repaired using Legacy Key!");
-
-                                setState(prev => ({
-                                    ...prev,
-                                    sharedKey: legacyKey,
-                                    privateKey: newKeyPair.privateKey,
-                                    publicKey: newKeyPair.publicKey,
-                                    publicKeyBase64: newPubBase64,
-                                    status: 'unlocked'
-                                }));
-                                return; // Exit logic, we are good
-                            } catch (legacyErr) {
-                                console.error("Legacy fallback failed:", legacyErr);
-                            }
-                        }
-
+                        setLastError("Identity Mismatch: Keys on this device don't match your partner link.");
                         setState(prev => ({ ...prev, status: 'broken-identity' }));
                     }
-                }
-
-                if (state.status !== 'unlocked' && data.sharedKeyBase64 && !data.encryptedSharedKey) {
+                } else if (!data.encryptedSharedKey && data.sharedKeyBase64) {
                     // LEGACY: Import old key & Migrate
                     try {
                         const sharedKey = await importKeyOld(data.sharedKeyBase64);
                         setState(prev => ({ ...prev, sharedKey, status: 'unlocked' }));
-                        console.log("Unlocked with Legacy Key");
 
-                        // Auto-Migrate Logic
-                        // IF: No Public Key (Clean Legacy) OR (Public Key exists but we lost Private Key)
-                        // logic: We can restart because we have the master sharedKeyBase64
-                        if (!publicKey || (publicKey && !privateKey)) {
-                            // CRITICAL: Generate NEW identity
-                            console.log("Generating missing/replacement identity for legacy user...");
-                            const newKeyPair = await generateRSAKeyPair();
-                            const newPubBase64 = await exportPublicKey(newKeyPair.publicKey);
-                            const newPrivBase64 = await exportPrivateKey(newKeyPair.privateKey);
-
-                            // 1. Store Private Key LOCALLY
-                            localStorage.setItem(`${STORAGE_KEY_PRIVATE}_${userUid}`, newPrivBase64);
-
-                            // 2. Wrap the existing Shared Key with new Public Key
-                            const wrapped = await wrapAESKey(sharedKey, newKeyPair.publicKey);
-
-                            // 3. Upload Public Key + Wrapped Key to Firestore
-                            await updateDoc(userRef, {
-                                publicKey: newPubBase64,
-                                encryptedSharedKey: wrapped
-                            });
-                            console.log("Legacy Identity Generated & Migrated.");
-
-                            // 4. Update State
-                            setState(prev => ({
-                                ...prev,
-                                privateKey: newKeyPair.privateKey,
-                                publicKey: newKeyPair.publicKey,
-                                publicKeyBase64: newPubBase64,
-                                status: 'unlocked'
-                            }));
-                        } else if (publicKey) {
-                            // We have private key AND public key, just missing the wrapped version?
-                            console.log("Auto-migrating: Wrapping shared key with existing identity...");
+                        // Auto-Migrate if we have Identity
+                        if (publicKey && privateKey) {
+                            console.log("Auto-migrating legacy key to encrypted...");
                             const wrapped = await wrapAESKey(sharedKey, publicKey);
-                            await updateDoc(userRef, { encryptedSharedKey: wrapped });
-                            console.log("Migration Complete.");
+                            await updateDoc(doc(db, 'users', userUid!), { encryptedSharedKey: wrapped });
                         }
                     } catch (e) {
                         console.error("Failed to load legacy shared key:", e);
                     }
+                } else if (data.encryptedSharedKey && !privateKey) {
+                    // WE HAVE A KEY ON SERVER BUT NO LOCAL Identity
+                    setState(prev => ({ ...prev, status: 'broken-identity' }));
+                    setLastError("Identity Missing: This device is missing the private key needed to unlock your connection.");
                 }
             }
         } catch (e) {
@@ -184,8 +116,15 @@ export const useEncryption = (userUid: string | undefined) => {
         }
     };
 
+    // React to Firestore data changes
+    useEffect(() => {
+        if (userData && userUid) {
+            loadIdentity();
+        }
+    }, [userData?.encryptedSharedKey, userData?.publicKey]);
+
     // 2. Generate New Identity (Onboarding)
-    const generateIdentity = async (): Promise<string> => {
+    const generateIdentity = async (): Promise<{ publicKeyBase64: string; privateKey: CryptoKey; publicKey: CryptoKey }> => {
         if (!userUid) throw new Error("No User UID");
 
         const keyPair = await generateRSAKeyPair();
@@ -204,23 +143,24 @@ export const useEncryption = (userUid: string | undefined) => {
             status: 'locked'
         });
 
-        return pubBase64; // Return for upload to Firestore
+        return { publicKeyBase64: pubBase64, privateKey: keyPair.privateKey, publicKey: keyPair.publicKey };
     };
 
     // 3. Create Shared Folder (First Pairing)
-    const createSharedFolder = async (): Promise<string> => {
-        if (!state.privateKey || !state.publicKey) throw new Error("No Identity Keys");
+    const createSharedFolder = async (overridePublicKey?: CryptoKey): Promise<{ wrappedKey: string; sharedKey: CryptoKey }> => {
+        const activePubKey = overridePublicKey || state.publicKey;
+        if (!activePubKey) throw new Error("No Public Key available for encryption.");
 
         // Generate Random Scheme Key
         const newSharedKey = await generateAESKey();
 
         // Wrap for MYSELF
-        const wrappedKey = await wrapAESKey(newSharedKey, state.publicKey);
+        const wrappedKey = await wrapAESKey(newSharedKey, activePubKey);
 
         // Save to State
         setState(prev => ({ ...prev, sharedKey: newSharedKey, status: 'unlocked' }));
 
-        return wrappedKey; // Return for upload to my profile
+        return { wrappedKey, sharedKey: newSharedKey };
     };
 
     // 4. Export Identity (Backup)
@@ -336,7 +276,6 @@ export const useEncryption = (userUid: string | undefined) => {
         }
     };
 
-    // 7. Emergency Reset (Fix Broken Identity)
     const resetEncryptionIdentity = async () => {
         if (!userUid) return;
 
@@ -346,16 +285,18 @@ export const useEncryption = (userUid: string | undefined) => {
 
         // 2. Generate New Identity
         try {
-            const newPubBase64 = await generateIdentity();
+            const result = await generateIdentity();
 
             // 3. Update Firestore (Clear old encrypted keys)
             const userRef = doc(db, 'users', userUid);
             await updateDoc(userRef, {
-                publicKey: newPubBase64,
+                publicKey: result.publicKeyBase64,
                 encryptedSharedKey: null, // Nuke the old broken key
                 sharedKeyBase64: null // Nuke legacy key
             });
 
+            console.log("Encryption identity reset complete.");
+            // No reload needed if we are reactive, but let's be safe
             window.location.reload();
         } catch (e) {
             console.error("Failed to reset identity:", e);
@@ -364,6 +305,7 @@ export const useEncryption = (userUid: string | undefined) => {
 
     return {
         ...state,
+        lastError,
         generateIdentity,
         createSharedFolder,
         backupIdentity,

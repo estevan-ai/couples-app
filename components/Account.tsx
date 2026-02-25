@@ -12,7 +12,7 @@ interface AccountProps {
     setInvites: React.Dispatch<React.SetStateAction<Invite[]>>;
     onReset: () => void;
     onResetHandlers?: (type: 'loves' | 'likes' | 'favors' | 'boundaries' | 'all_discovery' | 'history') => void;
-    onConnect: (partnerName: string, id: string) => void;
+    onLinkPartner: (partnerName: string, id: string) => Promise<void>;
     sharingSettings: SharingSettings;
     setSharingSettings: React.Dispatch<React.SetStateAction<SharingSettings>>;
     chatter: Record<string, ChatterNote[]>;
@@ -28,12 +28,13 @@ interface AccountProps {
     onConsumeSyncCode?: (code: string) => Promise<boolean>;
     onResetEncryption?: () => void;
     encryptionStatus?: 'locked' | 'unlocked' | 'initializing' | 'no-keys' | 'broken-identity';
+    encryptionError?: string | null;
     onUpdateProfile?: (data: Partial<User>) => Promise<void>;
 }
 
 const Account: React.FC<AccountProps> = ({
-    currentUser, partner, onReset, onConnect, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties, notificationSettings, setNotificationSettings, initialTab = 'profile',
-    onBackupIdentity, onRestoreIdentity, onGenerateSyncCode, onConsumeSyncCode, onResetEncryption, encryptionStatus, onUpdateProfile
+    currentUser, partner, onReset, onLinkPartner, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties, notificationSettings, setNotificationSettings, initialTab = 'profile',
+    onBackupIdentity, onRestoreIdentity, onGenerateSyncCode, onConsumeSyncCode, onResetEncryption, encryptionStatus, encryptionError, onUpdateProfile
 }) => {
     const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'privacy'>(initialTab);
 
@@ -52,6 +53,17 @@ const Account: React.FC<AccountProps> = ({
     const [showSyncCode, setShowSyncCode] = useState(false);
     const [showEnterCode, setShowEnterCode] = useState(false);
     const [syncCode, setSyncCode] = useState('');
+
+    const [mockImageReveal, setMockImageReveal] = useState(() => {
+        return localStorage.getItem('mockImageReveal') === 'true';
+    });
+
+    const toggleMockImageReveal = () => {
+        const newValue = !mockImageReveal;
+        setMockImageReveal(newValue);
+        localStorage.setItem('mockImageReveal', newValue.toString());
+    };
+
 
     // --- Activity Feed Logic ---
     const activityFeed = useMemo(() => {
@@ -125,15 +137,48 @@ const Account: React.FC<AccountProps> = ({
                     <PushNotificationManager currentUser={currentUser} />
 
                     <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 p-8">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1 block">Your Connect ID</span>
-                        <h2 className="text-4xl font-serif font-bold text-gray-800 mb-8">{currentUser.connectId}</h2>
+                        <div className="flex justify-between items-start mb-8">
+                            <div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1 block">Your Connect ID</span>
+                                <h2 className="text-4xl font-serif font-bold text-gray-800">{currentUser.connectId}</h2>
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    const shareText = `Hey! I just set up The Couples' Currency for us. Use my Connect ID to link our accounts: ${currentUser.connectId}\n\nDownload: ${window.location.origin}`;
+                                    if (navigator.share) {
+                                        try {
+                                            await navigator.share({
+                                                title: "Join me in The Couples' Currency",
+                                                text: shareText,
+                                                url: window.location.origin
+                                            });
+                                        } catch (e) {
+                                            console.log("Share failed or cancelled");
+                                        }
+                                    } else {
+                                        await navigator.clipboard.writeText(shareText);
+                                        alert("Invite link copied to clipboard! 💌");
+                                    }
+                                }}
+                                className="bg-indigo-50 text-indigo-600 px-4 py-3 rounded-2xl font-bold text-xs flex items-center gap-2 hover:bg-indigo-100 transition shadow-sm active:scale-95"
+                            >
+                                <span>💌</span> Invite Partner
+                            </button>
+                        </div>
 
                         <div className="mb-6">
                             <span className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2 block">Security Status</span>
                             {encryptionStatus === 'broken-identity' ? (
-                                <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-2 rounded-lg inline-block border border-red-100 animate-pulse">
-                                    <span>❌</span>
-                                    <span className="text-xs font-bold">Identity Error (Repair Needed)</span>
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-2 rounded-lg inline-block border border-red-100">
+                                        <span>❌</span>
+                                        <span className="text-xs font-bold">Identity Error (Repair Needed)</span>
+                                    </div>
+                                    {encryptionError && (
+                                        <p className="text-[10px] text-red-500 font-medium leading-tight pl-1 border-l-2 border-red-200">
+                                            {encryptionError}
+                                        </p>
+                                    )}
                                 </div>
                             ) : currentUser.encryptedSharedKey ? (
                                 <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg inline-block">
@@ -172,7 +217,7 @@ const Account: React.FC<AccountProps> = ({
                         <div className="space-y-4">
                             <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Pairing</h3>
                             {!partner ? (
-                                <form onSubmit={(e) => { e.preventDefault(); onConnect(partnerIdInput.split('-')[0], partnerIdInput); }} className="flex gap-2">
+                                <form onSubmit={(e) => { e.preventDefault(); onLinkPartner(partnerIdInput.split('-')[0], partnerIdInput); }} className="flex gap-2">
                                     <input value={partnerIdInput} onChange={e => setPartnerIdInput(e.target.value)} placeholder="Partner's ID" className="flex-grow px-4 py-3 bg-gray-50 rounded-xl text-sm outline-none border border-transparent focus:border-blue-400 font-mono" />
                                     <button disabled={!partnerIdInput.trim()} className="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl disabled:opacity-50 text-sm">Sync</button>
                                 </form>
@@ -185,7 +230,7 @@ const Account: React.FC<AccountProps> = ({
                                             <span className="text-xs text-blue-500">Sync Active</span>
                                         </div>
                                     </div>
-                                    <button onClick={() => { if (window.confirm("Disconnect partner? This will remove shared keys.")) onConnect('', ''); }} className="text-xs text-blue-400 hover:text-blue-600 underline">Unlink</button>
+                                    <button onClick={() => { if (window.confirm("Disconnect partner? This will remove shared keys.")) onLinkPartner('', ''); }} className="text-xs text-blue-400 hover:text-blue-600 underline">Unlink</button>
                                 </div>
                             )}
                         </div>
@@ -287,12 +332,13 @@ const Account: React.FC<AccountProps> = ({
                                                 {note.author}
                                             </span>
                                             <span className="text-[9px] text-gray-400 font-mono">
-                                                {new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                {new Date(note.timestamp).toLocaleDateString()} • {new Date(note.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         </div>
                                         <p className="text-gray-800 font-medium mb-2 leading-relaxed">
                                             "{note.text}"
                                         </p>
+
                                         <div className="flex items-center gap-2">
                                             <span className="text-[8px] font-black text-gray-300 uppercase tracking-widest">
                                                 {note.contextLabel}
@@ -439,12 +485,17 @@ const Account: React.FC<AccountProps> = ({
                                     <button
                                         onClick={async () => {
                                             if (onBackupIdentity) {
-                                                const key = await onBackupIdentity();
-                                                if (key) {
-                                                    setQrData(key);
-                                                    setShowQR(true);
-                                                } else {
-                                                    alert("No identity found. Refresh to generate one.");
+                                                try {
+                                                    const key = await onBackupIdentity();
+                                                    if (key) {
+                                                        setQrData(key);
+                                                        setShowQR(true);
+                                                    } else {
+                                                        alert("No identity found on this device. Please 'Export Identity' from your Desktop and scan it here.");
+                                                    }
+                                                } catch (e: any) {
+                                                    console.error("QR Generation Error:", e);
+                                                    alert(`Error generating QR: ${e.message || e}`);
                                                 }
                                             }
                                         }}
@@ -518,6 +569,58 @@ const Account: React.FC<AccountProps> = ({
                 </div>
             )}
 
+            {/* Data & Privacy Transparency section - Bottom weighted reassurance */}
+            <div className="mt-12 bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+                <div className="p-8 border-b border-gray-50 bg-gray-50/50">
+                    <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 flex items-center justify-between">
+                        Data & Privacy Transparency
+                        <button onClick={() => setShowPrivacyModal(true)} className="text-blue-500 hover:text-blue-700 capitalize text-[10px] tracking-normal">How it works →</button>
+                    </h3>
+                </div>
+                <div className="p-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider">End-to-End Encrypted</h4>
+                            </div>
+                            <ul className="text-[11px] text-gray-500 space-y-2 pl-4 border-l border-green-100">
+                                <li className="flex items-center gap-2"><span>✨</span> Intimate Favor details</li>
+                                <li className="flex items-center gap-2"><span>❤️</span> Discovery Loves / Likes</li>
+                                <li className="flex items-center gap-2"><span>📸</span> Image messages & selfies</li>
+                                <li className="flex items-center gap-2"><span>💭</span> Private thoughts & comments</li>
+                                <li className="flex items-center gap-2"><span>📖</span> Personal journal entries</li>
+                            </ul>
+                            <p className="text-[9px] text-green-600 bg-green-50/50 p-2 rounded-lg leading-relaxed">
+                                Scrambled <strong>before</strong> leaving your device. Even we can't read these.
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                                <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider">Visible to System</h4>
+                            </div>
+                            <ul className="text-[11px] text-gray-500 space-y-2 pl-4 border-l border-blue-100">
+                                <li className="flex items-center gap-2"><span>👤</span> Display Name & Email</li>
+                                <li className="flex items-center gap-2"><span>🔗</span> Connect ID & Pairing Status</li>
+                                <li className="flex items-center gap-2"><span>📊</span> Stats (e.g. "5 Favors Done")</li>
+                            </ul>
+                            <p className="text-[9px] text-blue-500 bg-blue-50/50 p-2 rounded-lg leading-relaxed">
+                                Necessary to power notifications, pairing, and your dashboard stats.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-50 flex items-center justify-center">
+                        <p className="text-[10px] text-gray-400 italic text-center">
+                            "Protecting your intimacy through math, providing connection through transparency."
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+
             <PrivacyModal isOpen={showPrivacyModal} onClose={() => setShowPrivacyModal(false)} />
 
             {/* QR Export Modal */}
@@ -543,7 +646,7 @@ const Account: React.FC<AccountProps> = ({
                                     </div>
                                 )}
                                 <div className={`p-4 bg-white rounded-xl shadow-inner border border-gray-100 transition-all duration-500 ${qrRevealed ? 'blur-none' : 'blur-md'}`}>
-                                    <QRCodeSVG value={qrData} size={200} level="M" />
+                                    <QRCodeSVG value={qrData} size={300} level="L" includeMargin={true} />
                                 </div>
                             </div>
 
@@ -606,15 +709,32 @@ import { Html5Qrcode } from 'html5-qrcode';
 const ScannerInitializer = ({ onScan }: { onScan: (text: string) => void }) => {
     React.useEffect(() => {
         const html5QrCode = new Html5Qrcode("reader");
+        let isStopped = false;
 
         const startScanner = async () => {
             try {
                 await html5QrCode.start(
                     { facingMode: "environment" },
-                    { fps: 10, qrbox: { width: 250, height: 250 } },
-                    (decodedText) => {
-                        onScan(decodedText);
-                        html5QrCode.stop().catch(console.error);
+                    { fps: 10, qrbox: (viewfinderWidth, viewfinderHeight) => ({ width: viewfinderWidth * 0.8, height: viewfinderWidth * 0.8 }) },
+                    async (decodedText) => {
+                        // Prevent multiple scans
+                        if (isStopped) return;
+                        isStopped = true;
+
+                        try {
+                            if (html5QrCode.isScanning) {
+                                await html5QrCode.stop();
+                            }
+                            html5QrCode.clear();
+                        } catch (e) {
+                            console.error("Error stopping scanner internally", e);
+                        }
+
+                        // Defer the onScan call (which contains blocking confirm() UI)
+                        // to let the camera and DOM safely shut down first.
+                        setTimeout(() => {
+                            onScan(decodedText);
+                        }, 150);
                     },
                     (errorMessage) => {
                         // parse error, ignore
@@ -628,10 +748,14 @@ const ScannerInitializer = ({ onScan }: { onScan: (text: string) => void }) => {
         startScanner();
 
         return () => {
-            if (html5QrCode.isScanning) {
-                html5QrCode.stop().catch(console.error);
+            if (!isStopped) {
+                isStopped = true;
+                if (html5QrCode.isScanning) {
+                    html5QrCode.stop().then(() => html5QrCode.clear()).catch(console.error);
+                } else {
+                    html5QrCode.clear();
+                }
             }
-            html5QrCode.clear();
         };
     }, []);
     return null;

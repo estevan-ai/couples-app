@@ -147,11 +147,52 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
         }
     };
 
+    const [showSecurityInfo, setShowSecurityInfo] = useState(false);
+
+    // ... (existing effects)
+
     return (
-        <div className="max-w-3xl mx-auto h-[75vh] flex flex-col gap-6 animate-in fade-in duration-500 pb-24 sm:pb-0">
+        <div className="max-w-3xl mx-auto h-[75vh] flex flex-col gap-6 animate-in fade-in duration-500 pb-24 sm:pb-0 relative">
+            {showSecurityInfo && (
+                <div className="absolute inset-0 z-50 bg-white/95 backdrop-blur-sm rounded-[2.5rem] flex items-center justify-center p-6 animate-in zoom-in-95 duration-200">
+                    <div className="max-w-md w-full">
+                        <button
+                            onClick={() => setShowSecurityInfo(false)}
+                            className="absolute top-8 right-8 text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center bg-gray-100 rounded-full"
+                        >
+                            ✕
+                        </button>
+                        <div className="text-center mb-6">
+                            <span className="text-5xl mb-4 block">🔐</span>
+                            <h3 className="text-2xl font-serif font-bold text-gray-800">Your Privacy is First</h3>
+                        </div>
+                        <div className="space-y-4 text-sm text-gray-600 bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                            <p className="flex gap-3">
+                                <span className="text-xl">🛡️</span>
+                                <span><strong className="text-gray-900 block">Local-First Encryption</strong>Your journal entries are encrypted on your device.</span>
+                            </p>
+                            <p className="flex gap-3">
+                                <span className="text-xl">🤐</span>
+                                <span><strong className="text-gray-900 block">Zero Knowledge</strong>We cannot read your reflections. Only you have the key.</span>
+                            </p>
+                            <p className="flex gap-3">
+                                <span className="text-xl">🧠</span>
+                                <span><strong className="text-gray-900 block">Private AI</strong>The AI Coach runs in a stateless session. It doesn't remember your secrets after the chat.</span>
+                            </p>
+                        </div>
+                        <button onClick={() => setShowSecurityInfo(false)} className="w-full mt-6 py-3 bg-gray-900 text-white font-bold rounded-xl hover:bg-black transition">
+                            Back to Journal
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-3xl font-serif font-bold text-gray-800">Your Reflection Space</h2>
+                    <h2 className="text-3xl font-serif font-bold text-gray-800 flex items-center gap-2">
+                        Reflection Space
+                        <button onClick={() => setShowSecurityInfo(true)} className="text-xs bg-gray-100 text-gray-500 px-2 py-1 rounded-full hover:bg-gray-200 transition" title="Security Info">🔒</button>
+                    </h2>
                     <p className="text-sm text-gray-500">Private thoughts & AI-curated insights.</p>
                 </div>
                 <div className="flex bg-gray-200 p-1 rounded-2xl">
@@ -238,8 +279,9 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
                         </div>
                         <div className="flex items-center justify-center gap-2 mt-4">
                             <span className="text-xl">🏠</span>
-                            <p className="text-[10px] text-center text-gray-400 font-bold uppercase tracking-widest">
+                            <p className="text-[10px] text-center text-gray-400 font-bold uppercase tracking-widest flex items-center gap-2">
                                 YOUR REFLECTION BOT IS A COACH, <span className="text-red-400">NOT A DOCTOR.</span>
+                                <button onClick={() => setShowSecurityInfo(true)} className="hover:text-gray-600 transition" title="Security Info">🔒</button>
                             </p>
                             <span className="text-xl">👤</span>
                         </div>
@@ -252,6 +294,9 @@ const ReflectionJournal: React.FC<ReflectionJournalProps> = ({ entries, onAddEnt
                             <div className="text-6xl mb-4">✍️</div>
                             <p className="text-gray-400 font-bold">Your journal is empty.</p>
                             <p className="text-xs text-gray-400 mt-2">Speak your mind in the Talk tab to generate insights.</p>
+                            <button onClick={() => setShowSecurityInfo(true)} className="mt-8 text-xs text-gray-300 hover:text-gray-500 flex items-center justify-center gap-1 mx-auto transition">
+                                <span>🔒</span> Is this private?
+                            </button>
                         </div>
                     ) : (
                         entries.map(entry => (

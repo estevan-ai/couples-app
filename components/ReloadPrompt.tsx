@@ -20,6 +20,36 @@ function ReloadPrompt() {
         },
     })
 
+    // Enhanced Update Check: Check on mount and when window regains focus
+    React.useEffect(() => {
+        const checkForUpdate = () => {
+            if (updateServiceWorker) {
+                console.log("Checking for SW update on visibility change...");
+                updateServiceWorker(true);
+            }
+        };
+
+        if (document.visibilityState === 'visible') {
+            checkForUpdate();
+        }
+
+        window.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                checkForUpdate();
+            }
+        });
+
+        return () => window.removeEventListener('visibilitychange', checkForUpdate);
+    }, [updateServiceWorker]);
+
+    // FORCE UPDATE ON LOAD: If needRefresh is true, update immediately.
+    React.useEffect(() => {
+        if (needRefresh && updateServiceWorker) {
+            console.log("Force updating to new version...");
+            updateServiceWorker(true);
+        }
+    }, [needRefresh, updateServiceWorker]);
+
     const close = () => {
         setOfflineReady(false)
         setNeedRefresh(false)

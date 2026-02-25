@@ -4,6 +4,7 @@ import { EMOJI_CATEGORIES, SEXTING_PATTERNS } from '../constants/emojiPatterns';
 import SecurePhoto from './SecurePhoto';
 import SecureAudio from './SecureAudio';
 import TimeLeft from './TimeLeft';
+import { MentionText } from './MentionText';
 
 interface MessageBubbleProps {
     note: ChatterNote;
@@ -52,148 +53,183 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ note, currentUser, partne
         setIsEditing(false);
     };
 
+    const [showActions, setShowActions] = useState(false);
+
     return (
         <div className={`group relative w-full flex ${isMine ? 'justify-end' : 'justify-start'} mb-6 px-2`}>
-            <div className={`max-w-[85%] sm:max-w-[70%] relative px-4 py-3 shadow-sm transition-all ${isMine
-                ? 'bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-2xl rounded-tr-sm'
-                : 'bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm'
-                }`}>
+            {/* Column Container for Bubble + Actions */}
+            <div className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[70%]`}>
 
-                {/* Content */}
-                <div className="mb-1">
-                    {note.category && (
-                        <span className={`text-[10px] font-black uppercase tracking-widest mb-1 block ${isMine ? 'text-indigo-100 opacity-80' : 'text-indigo-500'}`}>
-                            #{note.category}
-                        </span>
-                    )}
-                    {note.text && (
-                        isEditing ? (
-                            <textarea
-                                value={editText}
-                                onChange={(e) => setEditText(e.target.value)}
-                                className="w-full p-2 text-gray-800 rounded-lg outline-none bg-white/90"
-                                rows={3}
-                                autoFocus
-                            />
-                        ) : (
-                            <p className="text-[15px] sm:text-base leading-relaxed whitespace-pre-wrap">{note.text}</p>
-                        )
-                    )}
-                    {note.audioPath && <SecureAudio
-                        path={note.audioPath}
-                        ivStr={note.audioIv}
-                        encryptedKey={note.encryptedKey}
-                        sharedKey={sharedKey}
-                        isMine={isMine}
-                        privateKey={privateKey}
-                    />}
-                    {(note.photoPath || note.storagePath) && <SecurePhoto
-                        path={note.photoPath}
-                        ivStr={note.photoIv}
-                        storagePath={note.storagePath}
-                        encryptedKey={note.encryptedKey}
-                        sharedKey={sharedKey}
-                        timestamp={note.timestamp}
-                        isMine={isMine}
-                        privateKey={privateKey}
-                    />}
-                </div>
+                {/* Message Bubble */}
+                <div className={`relative px-4 py-3 shadow-sm transition-all ${isMine
+                    ? 'bg-gradient-to-br from-indigo-500 to-blue-600 text-white rounded-2xl rounded-tr-sm'
+                    : 'bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm'
+                    }`}>
 
-                {/* Metadata */}
-                <div className={`flex items-center gap-2 mt-1 opacity-70 ${isMine ? 'justify-end text-indigo-100' : 'justify-start text-gray-400'}`}>
-                    <span className="text-[9px] font-bold uppercase tracking-widest hidden sm:inline">
-                        {isMine ? 'YOU' : note.author.toUpperCase()}
-                    </span>
-                    <div className="scale-90 origin-left">
-                        <TimeLeft timestamp={note.timestamp} expiresAt={note.expiresAt} />
-                    </div>
-                    {isMine && (
-                        <span className="text-[9px] font-bold text-white/90">
-                            {note.status === 'read' ? '✓✓ Read' : '✓ Sent'}
-                        </span>
-                    )}
-                </div>
-
-                {/* Reactions Display (Overlapping) */}
-                {reactions.length > 0 && (
-                    <div className={`absolute -bottom-3 ${isMine ? 'right-4' : 'left-4'} flex -space-x-1 z-20`}>
-                        {reactions.map((r, i) => (
-                            <span key={i} className="bg-white rounded-full w-6 h-6 flex items-center justify-center shadow-sm border border-gray-100 text-xs" title={`Reaction from ${r.author}`}>
-                                {r.emoji}
+                    {/* Content */}
+                    <div className="mb-1">
+                        {note.category && (
+                            <span className={`text-[10px] font-black uppercase tracking-widest mb-1 block ${isMine ? 'text-indigo-100 opacity-80' : 'text-indigo-500'}`}>
+                                #{note.category}
                             </span>
-                        ))}
+                        )}
+                        {note.text && (
+                            isEditing ? (
+                                <div className="flex flex-col gap-2">
+                                    <textarea
+                                        value={editText}
+                                        onChange={(e) => setEditText(e.target.value)}
+                                        className="w-full p-2 text-gray-800 rounded-lg outline-none bg-white/90 text-sm"
+                                        rows={3}
+                                        autoFocus
+                                    />
+                                    <div className="flex justify-end gap-2">
+                                        <button
+                                            onClick={() => setIsEditing(false)}
+                                            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleSaveEdit}
+                                            className="text-xs font-bold px-3 py-1.5 rounded-lg bg-white/90 text-indigo-600 hover:bg-white transition shadow-sm"
+                                        >
+                                            Save
+                                        </button>
+                                        {onDeleteNote && (
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm("Delete this message?")) onDeleteNote(note.id);
+                                                }}
+                                                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-red-500/80 hover:bg-red-500 text-white transition ml-2"
+                                            >
+                                                Delete
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-[15px] sm:text-base leading-relaxed whitespace-pre-wrap">{note.text}</p>
+                            )
+                        )}
+                        {note.audioPath && <SecureAudio
+                            path={note.audioPath}
+                            ivStr={note.audioIv}
+                            encryptedKey={note.encryptedKey}
+                            sharedKey={sharedKey}
+                            isMine={isMine}
+                            privateKey={privateKey}
+                        />}
+                        {(note.photoPath || note.storagePath) && <SecurePhoto
+                            path={note.photoPath}
+                            ivStr={note.photoIv}
+                            storagePath={note.storagePath}
+                            encryptedKey={note.encryptedKey}
+                            sharedKey={sharedKey}
+                            timestamp={note.timestamp}
+                            isMine={isMine}
+                            privateKey={privateKey}
+                        />}
+                    </div>
+
+                    {/* Metadata (Time & Read Status) */}
+                    <div className={`flex items-center gap-2 mt-1 opacity-80 ${isMine ? 'justify-end text-indigo-100' : 'justify-start text-gray-400'}`}>
+                        <span className="text-[9px] font-bold uppercase tracking-widest hidden sm:inline">
+                            {isMine ? 'YOU' : note.author.toUpperCase()}
+                        </span>
+                        <div className="scale-90 origin-left">
+                            <TimeLeft timestamp={note.timestamp} expiresAt={note.expiresAt} />
+                        </div>
+                        {isMine && !isEditing && (
+                            <span className="text-[9px] font-bold text-white/90">
+                                {note.status === 'read' ? '✓✓' : '✓'}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Reactions Display (Attached to bubble) */}
+                    {reactions.length > 0 && (
+                        <div className={`absolute -bottom-3 ${isMine ? 'right-4' : 'left-4'} flex -space-x-1 z-20`}>
+                            {reactions.map((r, i) => (
+                                <span key={i} className="bg-white rounded-full w-6 h-6 flex items-center justify-center shadow-sm border border-gray-100 text-xs" title={`Reaction from ${r.author}`}>
+                                    {r.emoji}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                {/* Actions Row (Below Bubble) */}
+                {!isEditing && (
+                    <div className={`flex items-center gap-2 mt-1 px-1 transition-opacity ${isMine ? 'justify-end' : 'justify-start'}`}>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); setIsDrawerOpen(true); }}
+                            className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-indigo-500 transition"
+                            title="Add Reaction"
+                        >
+                            <span className="text-sm">☺+</span>
+                        </button>
+
+                        {/* Pin / Reflect */}
+                        {onPinInsight && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onPinInsight(note.text, "Chat Message"); }}
+                                className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-yellow-500 transition"
+                                title="Pin to Insights"
+                            >
+                                <span className="text-xs">📌</span>
+                            </button>
+                        )}
+
+                        {onReflect && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onReflect(note.text || ''); }}
+                                className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-teal-500 transition"
+                                title="Think Deeper"
+                            >
+                                <span className="text-xs">📓</span>
+                            </button>
+                        )}
+
+                        {isMine && onEditNote && note.text && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsEditing(true);
+                                    setEditText(note.text || '');
+                                }}
+                                className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-blue-500 transition"
+                                title="Edit"
+                            >
+                                <span className="text-xs">✏️</span>
+                            </button>
+                        )}
+                        {isMine && onDeleteNote && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm("Delete this message?")) onDeleteNote(note.id);
+                                }}
+                                className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-red-500 transition"
+                                title="Delete"
+                            >
+                                <span className="text-xs">🗑️</span>
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
 
-            {/* Action Buttons (Floating to the side) */}
-            <div className={`absolute top-1/2 -translate-y-1/2 ${isMine ? 'left-auto right-full mr-2' : 'right-auto left-full ml-2'} opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-2 z-10`}>
-                <button
-                    onClick={(e) => { e.stopPropagation(); setIsDrawerOpen(!isDrawerOpen); }}
-                    className="text-gray-400 hover:text-indigo-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-gray-100 hover:scale-110 transition"
-                    title="Add Reaction"
-                >
-                    ☺+
-                </button>
-                {/* Pin Action */}
-                {onPinInsight && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onPinInsight(note.text, "Chat Message");
-                        }}
-                        className="text-gray-400 hover:text-yellow-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-gray-100 hover:scale-110 transition"
-                        title="Pin to Insights"
-                    >
-                        📌
-                    </button>
-                )}
-                {/* Reflect Action */}
-                {onReflect && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onReflect(note.text || '');
-                        }}
-                        className="text-gray-400 hover:text-teal-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-gray-100 hover:scale-110 transition"
-                        title="Think Deeper (Journal)"
-                    >
-                        📓
-                    </button>
-                )}
-                {isMine && onEditNote && note.text && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setIsEditing(true); setEditText(note.text || ''); }}
-                        className="text-gray-400 hover:text-blue-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-gray-100 hover:scale-110 transition"
-                        title="Edit"
-                    >
-                        ✏️
-                    </button>
-                )}
-                {isMine && onDeleteNote && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm("Delete this message?")) onDeleteNote(note.id);
-                        }}
-                        className="text-gray-400 hover:text-red-500 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-sm border border-gray-100 hover:scale-110 transition"
-                        title="Delete"
-                    >
-                        🗑️
-                    </button>
-                )}
-            </div>
-
-            {/* Reaction Drawer */}
+            {/* Reaction Drawer (Kept as is, just triggered inline now) */}
             {isDrawerOpen && (
                 <div
-                    className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm cursor-default"
+                    className="fixed inset-0 z-50 bg-black/20 backdrop-blur-sm cursor-default flex items-center justify-center"
                     onClick={(e) => {
                         e.stopPropagation();
                         setIsDrawerOpen(false);
                     }}
                 >
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-4 rounded-xl shadow-2xl max-w-xs w-full max-h-[60vh] overflow-y-auto border border-gray-100 animate-in zoom-in-95 duration-200">
+                    <div className="bg-white p-4 rounded-xl shadow-2xl max-w-xs w-full max-h-[60vh] overflow-y-auto border border-gray-100 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
                         {!showGuide ? (
                             <>
                                 <div className="flex justify-between items-center mb-2">

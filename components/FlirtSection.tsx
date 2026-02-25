@@ -8,6 +8,7 @@ import { compressImage } from '../utils/image';
 import ActivityFeed from './ActivityFeed';
 import MessageBubble from './MessageBubble';
 import AudioRecorder from './AudioRecorder';
+import { MentionSuggestions } from './MentionSuggestions';
 
 interface FlirtSectionProps {
     currentUser: User;
@@ -28,6 +29,7 @@ interface FlirtSectionProps {
     privateKey: CryptoKey | null;
     onReflect?: (text: string) => void;
     initialTab?: 'flirts' | 'thoughts' | 'activity';
+    targetThreadId?: string | null; // New Prop
     terms?: import('../types').Term[];
     partnerBookmarks?: Record<number, import('../types').Bookmark>;
 }
@@ -50,6 +52,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
     privateKey,
     onReflect,
     initialTab = 'flirts',
+    targetThreadId,
     terms,
     partnerBookmarks,
     flirts
@@ -65,7 +68,18 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
             setActiveTab(initialTab);
         }
     }, [initialTab]);
+
+
+
     const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+
+    // Deep Link Effect
+    useEffect(() => {
+        if (targetThreadId) {
+            setActiveThreadId(targetThreadId);
+        }
+    }, [targetThreadId]);
+
     const [isComposerExpanded, setIsComposerExpanded] = useState(false);
 
     // Composer State
@@ -76,6 +90,50 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
     const [isDrafting, setIsDrafting] = useState(false);
     const [uploadStatus, setUploadStatus] = useState<'idle' | 'compressing' | 'encrypting' | 'uploading'>('idle');
     const [aiTone, setAiTone] = useState<'sweet' | 'spicy' | 'thoughtful'>('sweet');
+
+    // Mention State
+    const [mentionQuery, setMentionQuery] = useState('');
+    const [cursorPosition, setCursorPosition] = useState(0);
+    const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>, setter: (val: string) => void) => {
+        const value = e.target.value;
+        const pos = e.target.selectionStart || 0;
+        setter(value);
+        setCursorPosition(pos);
+
+        // Check for @
+        const lastAt = value.lastIndexOf('@', pos);
+        if (lastAt !== -1) {
+            const query = value.slice(lastAt + 1, pos);
+            if (!query.includes(' ')) {
+                setMentionQuery(query);
+            } else {
+                setMentionQuery('');
+            }
+        } else {
+            setMentionQuery('');
+        }
+    };
+
+    const handleMentionSelect = (term: import('../types').Term, setter: (val: any) => void, currentValue: string) => {
+        const lastAt = currentValue.lastIndexOf('@', cursorPosition);
+        if (lastAt !== -1) {
+            const newValue = currentValue.slice(0, lastAt) + `@${term.name} ` + currentValue.slice(cursorPosition);
+            setter(newValue);
+            setMentionQuery('');
+            // Focus back
+            // setTimeout(() => inputRef.current?.focus(), 10);
+        }
+    };
+
+    // Clear draft when tab changes
+    useEffect(() => {
+        setDraft('');
+        setStagedImage(null);
+        setAudioBlob(null);
+        setThreadSubject('');
+    }, [activeTab, activeThreadId]);
 
     // Refs
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -302,6 +360,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
                 let encryptedBlob: Blob;
 
                 if (partnerPubKey) {
+                    console.warn(`[FlirtSection] Encrypting image for partner using Public Key starting with: ${(partner as any).publicKey.substring(0, 20)}...`);
                     const disposableKey = await generateAESKey();
                     const result = await encryptBlob(blobToEncrypt, disposableKey);
                     encryptedBlob = result.encryptedBlob;
@@ -712,7 +771,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
             {isComposerExpanded && (
                 <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-start justify-center p-4 pt-16 animate-in fade-in duration-200">
                     <div className="absolute inset-0" onClick={() => setIsComposerExpanded(false)}></div>
-                    <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-top-4 duration-200 relative pointer-events-auto flex flex-col max-h-[90vh]">
+                    <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl animate-in slide-in-from-top-4 duration-200 relative pointer-events-auto flex flex-col max-h-[90vh]">
                         {/* Header */}
                         <div className="p-5 pb-2">
                             <div className="flex justify-between items-center mb-4">
@@ -723,14 +782,19 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
                             </div>
 
                             {activeTab === 'thoughts' && !activeThreadId && (
-                                <div className="mb-4">
+                                <div className="mb-4 relative">
                                     <input
                                         type="text"
                                         placeholder="What's on your mind? (Title)"
                                         className="w-full text-lg font-bold border-b border-gray-200 py-2 outline-none focus:border-indigo-500 placeholder-gray-300 transition-colors"
-                                        onChange={(e) => setThreadSubject(e.target.value)}
+                                        onChange={(e) => handleInputChange(e, setThreadSubject)}
                                         value={threadSubject}
                                         autoFocus
+                                    />
+                                    <MentionSuggestions
+                                        query={mentionQuery}
+                                        terms={terms || []}
+                                        onSelect={(term) => handleMentionSelect(term, setThreadSubject, threadSubject)}
                                     />
                                 </div>
                             )}
@@ -783,13 +847,23 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
                         </div>
 
                         {/* Input Area */}
-                        <div className="px-5 py-2 flex-grow">
+                        <div className="px-5 py-2 flex-grow relative">
                             <textarea
                                 ref={draftInputRef}
                                 value={draft}
-                                onChange={e => setDraft(e.target.value)}
-                                placeholder={activeTab === 'thoughts' && !activeThreadId ? "Elaborate..." : "Type it yourself or use the magic wand above..."}
+                                onChange={(e) => handleInputChange(e, setDraft)}
+                                placeholder={
+                                    activeTab === 'thoughts'
+                                        ? (activeThreadId ? "Add to this thought..." : "What's on your mind?")
+                                        : "Send a quick flirt..."
+                                }
                                 className="w-full h-32 md:h-48 text-lg text-gray-700 placeholder-gray-300 resize-none outline-none bg-transparent"
+                            />
+                            <MentionSuggestions
+                                query={mentionQuery}
+                                terms={terms || []}
+                                onSelect={(term) => handleMentionSelect(term, setDraft, draft)}
+                                position="bottom"
                             />
 
                             {(stagedImage || audioBlob) && (
@@ -848,7 +922,9 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
 
                         <div className="flex-grow bg-gray-100 rounded-[1.5rem] px-4 py-2 cursor-text transition-colors group hover:bg-gray-50 border border-transparent hover:border-indigo-100" title="Tap to write">
                             <p className="text-gray-400 py-1.5 select-none truncate">
-                                {activeTab === 'thoughts' && !activeThreadId ? "Start a new thought..." : (draft || "Type a flirt...")}
+                                {activeTab === 'thoughts'
+                                    ? (activeThreadId ? "Reply to thought..." : "Start a new thought...")
+                                    : (draft || "Type a flirt...")}
                             </p>
                         </div>
 

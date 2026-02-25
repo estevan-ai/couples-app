@@ -127,9 +127,14 @@ export interface Bounty {
   rewardTerm: Term;
   task: string;
   deadline: string;
-  status: 'available' | 'claimed' | 'done' | 'archived';
+  status: 'available' | 'claimed' | 'done' | 'banked' | 'redemption_pending' | 'redeemed' | 'archived';
   postedBy: string;
   claimedBy: string | null;
+  redemptionDetails?: {
+    requestedDate: number;
+    note: string;
+  };
+  additionalTerms?: Term[]; // Stacking Feature: Modifiers like Pace, Outcome, etc.
 }
 
 export interface Invite {

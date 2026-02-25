@@ -37,7 +37,7 @@ export const generateActivityFeed = (
                 contextName = thread ? `Thread: ${thread.subject}` : "Thread";
             } else if (contextId.includes('term-')) {
                 contextName = 'Directory Update';
-            } else if (contextId.includes('bounty-')) {
+            } else if (contextId.includes('bounty-') || !isNaN(Number(contextId))) {
                 contextName = 'Favor Update';
             }
 

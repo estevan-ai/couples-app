@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Term, Bookmark, ChatterNote } from '../types';
+import { MentionSuggestions } from './MentionSuggestions';
 
 interface TermCardProps {
     term: Term;
@@ -39,6 +40,42 @@ const TermCard: React.FC<TermCardProps> = ({
     const [noteInput, setNoteInput] = useState('');
     const [showTray, setShowTray] = useState(false);
     const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+
+    // Mention State
+    const [mentionQuery, setMentionQuery] = useState('');
+    const [cursorPosition, setCursorPosition] = useState(0);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>, setter: (val: string) => void) => {
+        const value = e.target.value;
+        const pos = e.target.selectionStart || 0;
+        setter(value);
+        setCursorPosition(pos);
+
+        // Check for @
+        const lastAt = value.lastIndexOf('@', pos);
+        if (lastAt !== -1) {
+            const query = value.slice(lastAt + 1, pos);
+            if (!query.includes(' ')) {
+                setMentionQuery(query);
+            } else {
+                setMentionQuery('');
+            }
+        } else {
+            setMentionQuery('');
+        }
+    };
+
+    const handleMentionSelect = (term: Term, setter: (val: any) => void, currentValue: string) => {
+        const lastAt = currentValue.lastIndexOf('@', cursorPosition);
+        if (lastAt !== -1) {
+            const newValue = currentValue.slice(0, lastAt) + `@${term.name} ` + currentValue.slice(cursorPosition);
+            setter(newValue);
+            setMentionQuery('');
+            // Focus back
+            // setTimeout(() => inputRef.current?.focus(), 10);
+        }
+    };
 
     // Effect to handle highlighting/expansion
     React.useEffect(() => {
@@ -197,12 +234,19 @@ const TermCard: React.FC<TermCardProps> = ({
                                         ))}
                                     </div>
                                 )}
-                                <form onSubmit={handleNoteSubmit} className="flex gap-2">
+                                <form onSubmit={handleNoteSubmit} className="flex gap-2 relative">
                                     <input
                                         value={noteInput}
-                                        onChange={e => setNoteInput(e.target.value)}
+                                        onChange={(e) => handleInputChange(e, setNoteInput)}
                                         placeholder="Add a thought..."
                                         className="flex-grow px-3 py-2 text-xs bg-gray-50 rounded-lg border border-gray-200 outline-none focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-50 transition"
+                                        ref={inputRef}
+                                    />
+                                    <MentionSuggestions
+                                        query={mentionQuery}
+                                        terms={(window as any).termsData || []} // We might need to access terms differently if not passed as prop
+                                        onSelect={(term: Term) => handleMentionSelect(term, setNoteInput, noteInput)}
+                                        position="top"
                                     />
                                     <button type="submit" className="text-xs font-bold text-white bg-indigo-600 px-3 py-2 rounded-lg hover:bg-indigo-700">Send</button>
                                 </form>

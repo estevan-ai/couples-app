@@ -91,7 +91,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="space-y-8 animate-in fade-in duration-500 w-full mx-auto">
 
             {/* Stats Grid - 4 Box Layout */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                     { label: 'RECENT', count: recentActivity.length, icon: '🔔', tab: 'activity' },
                     { label: 'NEW FLIRTS', count: newFlirtsCount, icon: '💌', tab: 'flirts' },
@@ -117,7 +117,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <span>🔔</span> Recent Activity
                     </h2>
                     <button
-                        onClick={() => onNavigate('flirts')}
+                        onClick={() => onNavigate('activity')}
                         className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-3 py-1.5 rounded-full hover:bg-indigo-100 transition uppercase tracking-widest border border-indigo-100"
                     >
                         View All
@@ -264,9 +264,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-orange-50/50 rounded-2xl p-6 border border-orange-100 flex flex-col justify-center">
-                        <div className="text-[10px] font-black uppercase text-orange-400 tracking-widest mb-1">Rewards Ready</div>
-                        <div className="text-4xl font-serif font-bold text-orange-600">{rewardsReady}</div>
+                    <div className="bg-green-50/50 rounded-2xl p-6 border border-green-100 flex flex-col justify-center">
+                        <div className="text-[10px] font-black uppercase text-green-600 tracking-widest mb-1">In The Bank</div>
+                        {bounties.filter(b => ['banked', 'done'].includes(b.status) && b.claimedBy === currentUser.name).length}
                     </div>
                     <div className="bg-blue-50/50 rounded-2xl p-6 border border-blue-100 flex flex-col justify-center">
                         <div className="text-[10px] font-black uppercase text-blue-400 tracking-widest mb-1">Active Tasks</div>

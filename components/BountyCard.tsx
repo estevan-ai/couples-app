@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { MentionText } from './MentionText';
 import { Bounty, ChatterNote } from '../types';
 import { User } from '../types';
 
@@ -130,6 +131,15 @@ const BountyCard: React.FC<BountyCardProps> = ({
             <div className="mb-6 bg-blue-50/50 p-4 rounded-2xl border border-blue-100/50">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400 mb-1">The Reward</p>
                 <p className="font-bold text-blue-800">{bounty.rewardTerm.name}</p>
+                {bounty.additionalTerms && bounty.additionalTerms.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                        {bounty.additionalTerms.map((term: any) => (
+                            <span key={term.id} className="text-[10px] font-bold uppercase bg-white border border-blue-100 text-blue-600 px-2 py-1 rounded-lg">
+                                + {term.name}
+                            </span>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-tighter mb-6">
@@ -211,7 +221,7 @@ const BountyCard: React.FC<BountyCardProps> = ({
                             </div>
                             <div className="flex-grow">
                                 <div className="flex justify-between items-start">
-                                    <p className="text-xs text-gray-700 leading-snug">{notes[notes.length - 1].text}</p>
+                                    <p className="text-xs text-gray-700 leading-snug"><MentionText text={notes[notes.length - 1].text} /></p>
                                     {notes[notes.length - 1].author === currentUser.name && (
                                         <div className="flex items-center gap-1 ml-2">
                                             {editingNoteId === (notes[notes.length - 1].firestoreId || notes[notes.length - 1].id) ? (
@@ -264,7 +274,7 @@ const BountyCard: React.FC<BountyCardProps> = ({
                                     <div className="mt-2 text-[10px] space-y-2 border-t border-gray-200 pt-2">
                                         {notes.slice(0, notes.length - 1).map(n => (
                                             <div key={n.id} className="flex justify-between hover:bg-gray-100 p-1 rounded">
-                                                <p className="text-gray-500"><span className="font-bold">{n.author}:</span> {n.text}</p>
+                                                <p className="text-gray-500"><span className="font-bold">{n.author}:</span> <MentionText text={n.text} /></p>
                                                 {n.author === currentUser.name && (
                                                     <div className="flex items-center gap-1 ml-2">
                                                         {editingNoteId === (n.firestoreId || n.id) ? (

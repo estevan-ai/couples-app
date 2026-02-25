@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { termsData } from '../constants';
 import { Bookmark } from '../types';
-import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signInWithRedirect, getRedirectResult } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInAnonymously, signInWithRedirect, getRedirectResult, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { auth } from '../firebase';
 import { generateRSAKeyPair, exportPublicKey, exportPrivateKey } from '../utils/encryption';
 
 interface UserSetupProps {
-    onSetupComplete: (name: string, isDemo?: boolean, email?: string, initialBookmarks?: Record<number, Bookmark>, publicKey?: string, privateKey?: string) => void;
-    initialStep?: 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour';
+    onSetupComplete: (name: string, isDemo: boolean, email: string, initialBookmarks?: Record<number, Bookmark>, publicKey?: string, privateKey?: string, connectId?: string) => void;
+    initialStep?: 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour' | 'invite_partner';
     initialName?: string;
     initialEmail?: string;
 }
@@ -42,7 +42,10 @@ const tourSteps = [
 const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'age', initialName = '', initialEmail = '' }) => {
     const [name, setName] = useState(initialName);
     const [email, setEmail] = useState(initialEmail);
-    const [step, setStep] = useState<'loading' | 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour'>('loading');
+    const [password, setPassword] = useState('');
+    const [step, setStep] = useState<'loading' | 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour' | 'invite_partner'>('age');
+    const [generatedKeys, setGeneratedKeys] = useState<{ public?: string; private?: string }>({});
+    const [generatedConnectId, setGeneratedConnectId] = useState<string>("");
 
     const [selectedSpice, setSelectedSpice] = useState<string | null>(null);
     const [selectedTermIds, setSelectedTermIds] = useState<number[]>([]);
@@ -102,98 +105,80 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
     };
 
     const [authError, setAuthError] = useState<string | null>(null);
-
-    // Initial Auth Check (Prevents Flash of 18+ screen and fixes race condition)
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
+    const [isVerifyingRedirect, setIsVerifyingRedirect] = useState(true);
+    // Initial Auth Check (Standard Firebase Pattern)
     useEffect(() => {
         let mounted = true;
 
-        const checkAuth = async () => {
-            console.log("Checking auth status...");
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            if (!mounted) return;
 
-            // Create promises for both checks
-            const redirectPromise = getRedirectResult(auth).catch(e => {
-                console.error("Redirect Check Error:", e);
-                return null;
-            });
+            if (user) {
+                console.log("Auth State: Active User", user.uid);
+                if (user.displayName) setName(user.displayName.split(' ')[0]);
+                if (user.email) setEmail(user.email);
 
-            const authStatePromise = new Promise<any>((resolve) => {
-                const unsub = auth.onAuthStateChanged((user) => {
-                    unsub();
-                    resolve(user);
-                });
-            });
-
-            // Safety timeout (3 seconds max)
-            const timeoutPromise = new Promise<null>((resolve) => {
-                setTimeout(() => resolve(null), 3000);
-            });
-
-            // Race the checks against timeout
-            try {
-                // We wait for both checks OR the timeout
-                // Actually, we want to wait for checking to complete, but if it takes too long, give up.
-                // Promise.all is better, but Wrapped in a race with timeout.
-
-                const results = await Promise.race([
-                    Promise.all([redirectPromise, authStatePromise]),
-                    timeoutPromise
-                ]);
-
-                if (!mounted) return;
-
-                if (!results) {
-                    // Timeout hit
-                    console.log("Auth check timed out. Defaulting to age gate.");
-                    setStep('age');
-                    return;
-                }
-
-                const [redirectResult, authUser] = results;
-
-                if (redirectResult && redirectResult.user) {
-                    console.log("Redirect Login Success:", redirectResult.user);
-                    if (redirectResult.user.displayName) setName(redirectResult.user.displayName.split(' ')[0]);
-                    if (redirectResult.user.email) setEmail(redirectResult.user.email);
-                    setStep('name');
-                    return;
-                }
-
-                if (authUser) {
-                    console.log("Found active session (silent):", authUser);
-                    if (authUser.displayName) setName(authUser.displayName.split(' ')[0]);
-                    if (authUser.email) setEmail(authUser.email);
-                    setStep('name');
-                } else {
-                    console.log("No user found. Showing Age Gate.");
-                    setStep('age');
-                }
-
-            } catch (e) {
-                console.error("Auth Check Critical Error:", e);
-                if (mounted) setStep('age');
+                // Found user? Auto-advance to name setup (skipping Age/Auth screens)
+                setStep('name');
             }
-        };
+            // If no user, we stay at 'age' (default), so user can interact immediately.
+        });
 
-        checkAuth();
-        return () => { mounted = false; };
+        // Explicitly check for redirect result (Redundancy for mobile)
+        getRedirectResult(auth).then((result) => {
+            if (mounted && result && result.user) {
+                console.log("Redirect Result: Success", result.user.uid);
+                if (result.user.displayName) setName(result.user.displayName.split(' ')[0]);
+                if (result.user.email) setEmail(result.user.email);
+                setStep('name');
+            }
+        }).catch(e => {
+            if (mounted) console.error("Redirect Result Error:", e);
+        }).finally(() => {
+            if (mounted) setIsVerifyingRedirect(false);
+        });
+
+        return () => {
+            mounted = false;
+            unsubscribe();
+        };
     }, []);
 
     const handleGoogleLogin = async () => {
         setAuthError(null);
+        setIsLoggingIn(true);
+
         try {
+            // Attempt Popup Login first (Works on Desktop & many modern mobile browsers)
             const provider = new GoogleAuthProvider();
             const result = await signInWithPopup(auth, provider);
-            // Auto-fill details if available
+
+            // Success!
             if (result.user.displayName) setName(result.user.displayName.split(' ')[0]);
             if (result.user.email) setEmail(result.user.email);
             setStep('name');
-        } catch (error: any) {
-            console.error("Google Sign In Error:", error);
-            const errMsg = error.message || "Could not sign in with Google.";
-            setAuthError(errMsg);
 
-            if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/popup-blocked') {
-                setAuthError("Popup blocked. Try the 'Redirect Login' button below.");
+        } catch (error: any) {
+            console.error("Popup Login Failed:", error.code, error.message);
+
+            // If Popup fails (blocked, closed, or mobile environment issue), Try Redirect
+            if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user' || error.code === 'auth/operation-not-supported-in-this-environment') {
+                console.log("Falling back to Redirect Method...");
+                try {
+                    const provider = new GoogleAuthProvider();
+                    await signInWithRedirect(auth, provider);
+                    // Do NOT reset isLoggingIn here, as we are redirecting
+                    return;
+                } catch (redirectError: any) {
+                    console.error("Redirect Fallback Failed:", redirectError);
+                    setAuthError(redirectError.message || "Login failed. Please try again.");
+                    setIsLoggingIn(false);
+                }
+            } else {
+                // Genuine Auth Error (e.g., network, account issue)
+                setAuthError(error.message || "Could not sign in with Google.");
+                setIsLoggingIn(false);
             }
         }
     };
@@ -212,13 +197,13 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
     return (
         <div className="fixed inset-0 bg-gray-900 flex items-center justify-center p-4 z-[100]">
             <div className="max-w-md w-full bg-white rounded-[3rem] shadow-2xl p-6 sm:p-10 text-center relative border border-white/20 overflow-hidden min-h-[720px] flex flex-col justify-center animate-in zoom-in-95 duration-500">
-                {initialStep && (
+                {name.trim() !== '' && ['spice_intro', 'onboarding', 'tour'].includes(step) && (
                     <button
                         onClick={() => onSetupComplete(name, false, email, currentBookmarks)}
-                        className="absolute top-6 right-6 z-50 p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition"
-                        aria-label="Exit setup"
+                        className="absolute top-6 right-6 z-50 px-4 py-2 bg-gray-100/80 backdrop-blur-sm rounded-full text-xs font-bold text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-all shadow-sm border border-gray-200"
+                        aria-label="Skip to Dashboard"
                     >
-                        ✕
+                        Skip to Dashboard ⏭️
                     </button>
                 )}
 
@@ -250,21 +235,30 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                 <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl border border-red-100">
                                     {authError}
                                 </div>
-                                <button
-                                    onClick={handleGoogleRedirect}
-                                    className="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded-[1rem] text-sm hover:bg-blue-100 transition"
-                                >
-                                    Login via Redirect (Mobile Fix)
-                                </button>
                             </div>
                         )}
 
                         <button
                             onClick={handleGoogleLogin}
-                            className="w-full py-4 bg-white border border-gray-200 text-gray-700 font-bold rounded-[1.5rem] flex items-center justify-center gap-3 hover:bg-gray-50 transition shadow-sm"
+                            disabled={isLoggingIn || isVerifyingRedirect}
+                            className={`w-full py-4 bg-white border border-gray-200 text-gray-700 font-bold rounded-[1.5rem] flex items-center justify-center gap-3 hover:bg-gray-50 transition shadow-sm ${(isLoggingIn || isVerifyingRedirect) ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
-                            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
-                            Sign in with Google
+                            {isLoggingIn ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                    <span className="text-gray-500">Connecting...</span>
+                                </>
+                            ) : isVerifyingRedirect ? (
+                                <>
+                                    <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                    <span className="text-gray-500">Verifying...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6" alt="Google" />
+                                    Sign in with Google
+                                </>
+                            )}
                         </button>
 
                         <div className="flex items-center gap-4">
@@ -273,20 +267,62 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                             <div className="h-px bg-gray-200 flex-grow"></div>
                         </div>
 
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={e => setEmail(e.target.value)}
-                            placeholder="email@example.com"
-                            className="w-full px-6 py-4 bg-gray-50 rounded-[1.5rem] text-center text-lg font-medium outline-none"
-                        />
-                        <button
-                            onClick={() => setStep('name')}
-                            disabled={!email.includes('@')}
-                            className="w-full py-5 text-xl font-bold bg-gray-800 text-white rounded-[1.5rem] disabled:opacity-50"
-                        >
-                            Continue
-                        </button>
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            if (!email.includes('@') || password.length < 6) {
+                                setAuthError("Valid email and password (min 6 chars) required.");
+                                return;
+                            }
+                            setIsLoggingIn(true);
+                            setAuthError(null);
+
+                            // Try to login first, if user not found, try to create account. 
+                            // This is a simple combined login/register button for easy testing.
+                            import('firebase/auth').then(({ signInWithEmailAndPassword, createUserWithEmailAndPassword }) => {
+                                signInWithEmailAndPassword(auth, email, password)
+                                    .then((result) => {
+                                        if (result.user.displayName) setName(result.user.displayName.split(' ')[0]);
+                                        setStep('name');
+                                    })
+                                    .catch((error) => {
+                                        if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                                            createUserWithEmailAndPassword(auth, email, password)
+                                                .then(() => {
+                                                    setStep('name');
+                                                })
+                                                .catch(err => {
+                                                    setAuthError(err.message);
+                                                    setIsLoggingIn(false);
+                                                });
+                                        } else {
+                                            setAuthError(error.message);
+                                            setIsLoggingIn(false);
+                                        }
+                                    });
+                            });
+                        }} className="space-y-3">
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                placeholder="Email address"
+                                className="w-full px-6 py-4 bg-gray-50 rounded-[1.5rem] text-center text-lg font-medium outline-none border border-transparent focus:border-blue-200"
+                            />
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                placeholder="Password (6+ chars)"
+                                className="w-full px-6 py-4 bg-gray-50 rounded-[1.5rem] text-center text-lg font-medium outline-none border border-transparent focus:border-blue-200"
+                            />
+                            <button
+                                type="submit"
+                                disabled={isLoggingIn || !email.includes('@') || password.length < 6}
+                                className="w-full py-5 text-xl font-bold bg-gray-800 text-white rounded-[1.5rem] disabled:opacity-50"
+                            >
+                                {isLoggingIn ? "Authenticating..." : "Log In or Sign Up"}
+                            </button>
+                        </form>
                         <div className="pt-4 flex flex-col gap-2">
                             <div className="flex gap-2">
                                 <button onClick={() => handleDemo('Jane')} className="flex-1 py-3 bg-gray-50 text-gray-600 rounded-xl font-bold text-xs hover:bg-gray-100 border border-gray-100 transition">Jane Doe (Demo)</button>
@@ -324,9 +360,9 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                     <button
                                         key={idx}
                                         onClick={() => { setSelectedSpice(cat.name); setStep('onboarding'); }}
-                                        className={`group relative flex items - center gap - 4 p - 4 rounded - 3xl border text - left transition - all active: scale - 95 ${isDone ? 'bg-green-50/40 border-green-200 shadow-none' : 'bg-white border-gray-100 shadow-sm hover:border-blue-200'} `}
+                                        className={`group relative flex items-center gap-4 p-4 rounded-3xl border text-left transition-all active:scale-95 ${isDone ? 'bg-green-50/40 border-green-200 shadow-none' : 'bg-white border-gray-100 shadow-sm hover:border-blue-200'} `}
                                     >
-                                        <div className={`w - 14 h - 14 ${cat.color} rounded - 2xl shadow - inner flex items - center justify - center text - 3xl flex - shrink - 0 relative`}>
+                                        <div className={`w-14 h-14 ${cat.color} rounded-2xl shadow-inner flex items-center justify-center text-3xl flex-shrink-0 relative`}>
                                             {cat.icon}
                                             {isDone && (
                                                 <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white animate-in zoom-in">✓</div>
@@ -349,7 +385,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                             </div>
                             <button
                                 onClick={() => setStep('tour')}
-                                className={`w - full py - 5 text - xl font - bold rounded - [2rem] transition - all shadow - xl ${completedCategoriesCount > 0 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'} `}
+                                className={`w-full py-5 text-xl font-bold rounded-[2rem] transition-all shadow-xl ${completedCategoriesCount > 0 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'} `}
                                 disabled={completedCategoriesCount === 0}
                             >
                                 {completedCategoriesCount === 5 ? 'Finish & Explore' : 'Continue to Dashboard'}
@@ -382,7 +418,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         <button
                                             key={term.id}
                                             onClick={() => toggleTermSelection(term.id)}
-                                            className={`relative p - 4 rounded - 3xl border - 2 text - left transition - all h - 44 flex flex - col justify - between ${bookmark ? 'bg-gray-50 border-gray-100 opacity-40 grayscale pointer-events-none shadow-none' :
+                                            className={`relative p-4 rounded-3xl border-2 text-left transition-all h-44 flex flex-col justify-between ${bookmark ? 'bg-gray-50 border-gray-100 opacity-40 grayscale pointer-events-none shadow-none' :
                                                 isSelected ? 'bg-blue-50 border-blue-500 ring-4 ring-blue-50' :
                                                     'bg-white border-gray-100 hover:border-gray-300 shadow-sm'
                                                 } `}
@@ -406,7 +442,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                         </div>
 
                         {/* Minimalist Floating Action Bar - Updated to 3+2 layout */}
-                        <div className={`absolute bottom - 0 left - 0 right - 0 p - 4 z - 10 transition - all duration - 500 transform ${selectedTermIds.length > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'} `}>
+                        <div className={`absolute bottom-0 left-0 right-0 p-4 z-10 transition-all duration-500 transform ${selectedTermIds.length > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'} `}>
                             <div className="bg-white/95 backdrop-blur-md border border-gray-200 p-5 rounded-[2.5rem] shadow-2xl space-y-3">
                                 <div className="flex justify-between items-center mb-1">
                                     <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest">Group Sort ({selectedTermIds.length})</p>
@@ -423,7 +459,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         <button
                                             key={action.type}
                                             onClick={() => handleBatchAction(action.type)}
-                                            className={`py - 3.5 ${action.color} text - white rounded - 2xl flex flex - col items - center gap - 1 shadow - md active: scale - 95 transition - all`}
+                                            className={`py-3.5 ${action.color} text-white rounded-2xl flex flex-col items-center gap-1 shadow-md active:scale-95 transition-all`}
                                         >
                                             <span className="text-xl">{action.icon}</span>
                                             <span className="text-[9px] font-black uppercase tracking-tighter">{action.label}</span>
@@ -440,7 +476,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         <button
                                             key={action.type}
                                             onClick={() => handleBatchAction(action.type)}
-                                            className={`py - 3.5 ${action.color} ${action.type === 'unsure' ? '' : 'text-white'} rounded - 2xl flex flex - col items - center gap - 1 shadow - md active: scale - 95 transition - all`}
+                                            className={`py-3.5 ${action.color} ${action.type === 'unsure' ? '' : 'text-white'} rounded-2xl flex flex-col items-center gap-1 shadow-md active:scale-95 transition-all`}
                                         >
                                             <span className="text-xl">{action.icon}</span>
                                             <span className="text-[9px] font-black uppercase tracking-tighter">{action.label}</span>
@@ -477,7 +513,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                         <div className="space-y-6 mt-8">
                             <div className="flex justify-center gap-2">
                                 {tourSteps.map((_, i) => (
-                                    <div key={i} className={`h - 1.5 rounded - full transition - all duration - 300 ${i === tourStep ? 'w-6 bg-blue-600' : 'w-1.5 bg-gray-200'} `} />
+                                    <div key={i} className={`h - 1.5 rounded - full transition-all duration - 300 ${i === tourStep ? 'w-6 bg-blue-600' : 'w-1.5 bg-gray-200'} `} />
                                 ))}
                             </div>
 
@@ -486,22 +522,112 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                     if (tourStep < tourSteps.length - 1) {
                                         setTourStep(tourStep + 1);
                                     } else {
-                                        // Generate Keys
+                                        // Generate Keys and Connect ID
                                         let pubKey: string | undefined;
                                         let privKey: string | undefined;
+                                        const connId = Math.random().toString(36).substring(2, 8).toUpperCase();
+
                                         try {
                                             const keys = await generateRSAKeyPair();
                                             pubKey = await exportPublicKey(keys.publicKey);
                                             privKey = await exportPrivateKey(keys.privateKey);
+
+                                            // Save Private Key LOCALLY immediately
+                                            if (auth.currentUser) {
+                                                localStorage.setItem(`couple_currency_private_key_${auth.currentUser.uid}`, privKey);
+                                                console.log("Private key persisted to local storage.");
+                                            }
+
+                                            setGeneratedKeys({ public: pubKey, private: privKey });
+                                            setGeneratedConnectId(connId);
+                                            setStep('invite_partner');
                                         } catch (e) {
                                             console.error("Key gen failed in setup:", e);
+                                            // Fallback: Proceed even if keys fail? Usually better to fail safely.
+                                            onSetupComplete(name.trim() || 'User', false, email, currentBookmarks, undefined, undefined, connId);
                                         }
-                                        onSetupComplete(name.trim() || 'User', false, email, currentBookmarks, pubKey, privKey);
                                     }
                                 }}
                                 className="w-full py-5 text-xl font-bold bg-gray-800 text-white rounded-[2rem] hover:bg-black transition shadow-xl"
                             >
                                 {tourStep < tourSteps.length - 1 ? 'Next' : 'Enter the Currency'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {step === 'invite_partner' && (
+                    <div className="animate-in slide-in-from-right-4 duration-500 flex flex-col h-full">
+                        <div className="flex-grow flex flex-col items-center justify-center space-y-8">
+                            <div className="relative">
+                                <div className="w-32 h-32 bg-indigo-50 text-indigo-600 rounded-[2.5rem] shadow-2xl flex items-center justify-center text-6xl animate-pulse">
+                                    🤝
+                                </div>
+                                <div className="absolute -bottom-2 -right-2 w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-lg border-2 border-indigo-100">
+                                    <span className="text-xl">✨</span>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4 px-4 text-center">
+                                <p className="text-[10px] font-black text-indigo-400 tracking-[0.3em] uppercase">Connect Now</p>
+                                <h2 className="text-4xl font-serif font-bold text-gray-800 leading-tight">Invite Your Partner</h2>
+                                <p className="text-gray-500 text-sm max-w-[280px] mx-auto leading-relaxed">
+                                    Share this unique code to start your shared journey in the Currency.
+                                </p>
+                            </div>
+
+                            <div className="w-full px-4">
+                                <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-8 group relative overflow-hidden transition-all hover:bg-gray-100 cursor-pointer active:scale-[0.98]">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 text-center">Your Connect ID</p>
+                                    <div className="text-5xl font-mono font-black text-indigo-600 tracking-[0.2em] text-center select-all">
+                                        {generatedConnectId}
+                                    </div>
+                                    <div className="absolute top-2 right-4 opacity-10 group-hover:opacity-100 transition-opacity">
+                                        <span className="text-xs font-bold text-indigo-600">📋 TAP TO COPY</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 mt-8">
+                            <button
+                                onClick={async () => {
+                                    const shareText = `Hey! I just set up The Couples' Currency for us. Use my Connect ID to link our accounts: ${generatedConnectId}\n\nDownload: ${window.location.origin}`;
+                                    if (navigator.share) {
+                                        try {
+                                            await navigator.share({
+                                                title: "Join me in The Couples' Currency",
+                                                text: shareText,
+                                                url: window.location.origin
+                                            });
+                                        } catch (e) {
+                                            console.log("Share failed or cancelled");
+                                        }
+                                    } else {
+                                        await navigator.clipboard.writeText(shareText);
+                                        alert("Invite link copied to clipboard! 💌");
+                                    }
+                                }}
+                                className="w-full py-5 text-xl font-bold bg-indigo-600 text-white rounded-[2rem] hover:bg-indigo-700 transition shadow-xl flex items-center justify-center gap-3 active:scale-95"
+                            >
+                                <span>💌</span> Invite My Partner
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    onSetupComplete(
+                                        name.trim() || 'User',
+                                        false,
+                                        email,
+                                        currentBookmarks,
+                                        generatedKeys.public,
+                                        generatedKeys.private,
+                                        generatedConnectId
+                                    );
+                                }}
+                                className="w-full py-4 text-sm font-bold text-gray-400 hover:text-gray-600 transition tracking-widest uppercase hover:underline"
+                            >
+                                Continue to Dashboard
                             </button>
                         </div>
                     </div>
