@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Term, SortOption, Filters, Bookmark, Bounty, ChatterNote } from '../types';
 import TermCard from './TermCard';
 import FilterPanel from './FilterPanel';
@@ -130,6 +130,14 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
         }
     }, [highlightedTermId, terms]);
 
+    const SPICE_ORDER = [
+        "Sweet & Safe",
+        "Flirty & Teasing",
+        "Sexy & Physical",
+        "Kinky & Playful",
+        "Wild & Advanced"
+    ];
+
     // State for Bounty Modal
     const [selectedTermForBounty, setSelectedTermForBounty] = useState<Term | null>(null);
     const [filters, setFilters] = useState<Filters>({
@@ -141,16 +149,34 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
         showMyLikes: true,
         showMyWork: true,
         showMyUnsure: true,
-        showMyBoundaries: false // Default to hidden
+        showMyBoundaries: false, // Default to hidden
+        hideAboveSpiceLimit: !!currentUser?.spiceLimit
     });
     const [isBountyModalOpen, setIsBountyModalOpen] = useState(false);
     const [isAIDiveOpen, setIsAIDiveOpen] = useState(false);
     const [selectedTerm, setSelectedTerm] = useState<Term | null>(null);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+    const [isSearchBarVisible, setIsSearchBarVisible] = useState(true);
+    const searchBarRef = useRef<HTMLDivElement>(null);
 
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
         boundaries: true
     });
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                setIsSearchBarVisible(entry.isIntersecting);
+            },
+            { threshold: 0 }
+        );
+
+        if (searchBarRef.current) {
+            observer.observe(searchBarRef.current);
+        }
+
+        return () => observer.disconnect();
+    }, []);
 
     const toggleSection = (section: string) => {
         setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
@@ -192,6 +218,17 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
             filtered = filtered.filter(term =>
                 [...filters.tags].every(tag => term.tags.includes(tag))
             );
+        }
+
+        // Spice Threshold Filter
+        if (filters.hideAboveSpiceLimit && currentUser?.spiceLimit) {
+            const limitIndex = SPICE_ORDER.indexOf(currentUser.spiceLimit);
+            if (limitIndex !== -1) {
+                filtered = filtered.filter(term => {
+                    const termIndex = SPICE_ORDER.indexOf(term.category);
+                    return termIndex <= limitIndex; // Only show terms up to their selected limit
+                });
+            }
         }
 
         // Partner Filters
@@ -280,7 +317,7 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                     <p className="text-lg text-gray-500 max-w-2xl mx-auto">Explore and communicate your desires with clarity.</p>
                 </header>
 
-                <div className="sticky top-28 z-30 mb-6 px-2 py-4 bg-gray-50/95 backdrop-blur-sm transition-all rounded-b-2xl">
+                <div ref={searchBarRef} className="mb-6 px-2 py-4 bg-gray-50/95 transition-all rounded-b-2xl">
                     <div className="flex gap-3 max-w-full">
                         <input
                             type="text"
@@ -307,9 +344,17 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
                         </button>
                         <button
                             onClick={() => setViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
-                            className="flex-none w-14 h-14 bg-white rounded-full border border-gray-200 shadow-sm flex items-center justify-center text-2xl hover:bg-gray-50 transition"
+                            className="flex-none w-14 h-14 bg-white rounded-full border border-gray-200 shadow-sm flex items-center justify-center hover:bg-gray-50 transition"
                         >
-                            {viewMode === 'grid' ? '📄' : '📱'}
+                            {viewMode === 'grid' ? (
+                                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-gray-600">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            ) : (
+                                <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-gray-600">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                                </svg>
+                            )}
                         </button>
                     </div>
                 </div>
@@ -451,12 +496,41 @@ const TermsDirectory: React.FC<TermsDirectoryProps> = ({
 
             </div>
 
+            {/* Floating View Toggles (Visible when Search Bar is hidden) */}
+            <div className={`fixed top-[100px] left-1/2 -translate-x-1/2 mt-4 z-50 pointer-events-auto transition-all duration-300 ${!isSearchBarVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-8 pointer-events-none'}`}>
+                <div className="bg-white/90 backdrop-blur-md shadow-lg border border-gray-200 rounded-full px-2 py-2 flex items-center gap-2">
+                    <button
+                        onClick={() => setIsPanelOpen(true)}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center transition ${filters.category !== 'all' || filters.tags.size > 0 ? 'bg-blue-600 text-white shadow-md' : 'bg-gray-50 text-blue-600 hover:bg-blue-50'}`}
+                        title="Filters"
+                    >
+                        <FilterIcon />
+                    </button>
+                    <div className="w-px h-6 bg-gray-200 mx-1"></div>
+                    <button
+                        onClick={() => setViewMode(prev => prev === 'grid' ? 'list' : 'grid')}
+                        className="w-10 h-10 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition"
+                    >
+                        {viewMode === 'grid' ? (
+                            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-gray-600">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                            </svg>
+                        ) : (
+                            <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" className="text-gray-600">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                            </svg>
+                        )}
+                    </button>
+                </div>
+            </div>
+
             <FilterPanel
                 isOpen={isPanelOpen}
                 onClose={() => setIsPanelOpen(false)}
                 filters={filters}
                 onFilterChange={handleFilterChange}
                 onTagToggle={handleTagToggle}
+                currentUser={currentUser}
             />
             {/* Modals */}
             <BountyModal

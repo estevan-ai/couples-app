@@ -433,7 +433,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
             const relationshipContext = currentUser.relationshipContext ? `\nRELATIONSHIP CONTEXT: "${currentUser.relationshipContext}"` : "";
             const persona = currentUser.agentPersona ? `\nYOUR PERSONA: ${currentUser.agentPersona}` : "\nYOUR PERSONA: A helpful, romantic communication assistant.";
 
-            const systemPrompt = `You are a helpful romantic assistant for ${currentUser.name} messaging ${partner?.name || 'Partner'}.${relationshipContext}${persona}\n\nCURRENT TONE TARGET: ${aiTone}. \nGOAL: Help the user draft a message that fits their relationship context and chosen tone. Keep it short (1-2 sentences).`;
+            const systemPrompt = `You are a helpful romantic assistant for ${currentUser.name} messaging ${partner?.name || 'Partner'}.${relationshipContext}${persona}\n\nCURRENT TONE TARGET: ${aiTone}. \nGOAL: Help the user draft a short, romantic message (1-2 sentences) that fits their relationship context and tone. CRITICAL OUTPUT INSTRUCTIONS: ONLY return the text of the flirt. Do NOT add any chatty commentary, greetings, quotes, or conversational filler. Return just the text.`;
 
             const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
             const chat = model.startChat({
@@ -461,7 +461,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
 
     // --- 7. RENDER ---
     return (
-        <div className="flex flex-col h-[calc(100dvh_-_140px)] max-w-2xl mx-auto bg-white sm:rounded-3xl shadow-2xl overflow-hidden relative border border-gray-100">
+        <div className="fixed inset-x-0 bottom-[68px] sm:bottom-[80px] top-[72px] sm:top-[100px] bg-[#fdfdfd] md:bg-white md:rounded-t-3xl md:shadow-2xl md:border-x md:border-t border-gray-200/50 max-w-3xl mx-auto flex flex-col overflow-hidden z-40 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* ... privacy ... */}
 
             {/* ... header ... */}
@@ -720,22 +720,7 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
                 </div>
             ) : (
                 /* --- MESSAGES FEED (Flirts OR Thought Detail) --- */
-                <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-2 bg-[#f9f9fb] scroll-smooth pb-32">
-                    {/* Compact Quick Flirt Trigger (Restored) */}
-                    {activeTab === 'flirts' && (
-                        <button
-                            onClick={() => setIsComposerExpanded(true)}
-                            className="w-full bg-white hover:bg-pink-50 border border-pink-100 rounded-xl p-3 flex items-center justify-between transition-all group mb-4 shadow-sm sticky top-0 z-10"
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-pink-100 border border-pink-200 flex items-center justify-center text-pink-500 group-hover:scale-110 transition-transform">
-                                    <span className="text-lg">💌</span>
-                                </div>
-                                <span className="text-gray-500 font-bold text-sm group-hover:text-pink-600">Send a Quick Flirt...</span>
-                            </div>
-                            <span className="text-pink-300 font-light text-lg">+</span>
-                        </button>
-                    )}
+                <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-2 bg-[#f9f9fb] scroll-smooth pb-4">
 
                     {messages.length === 0 ? (
                         <div className="h-full flex flex-col justify-center items-center text-gray-400 opacity-50 space-y-4">
@@ -767,173 +752,170 @@ const FlirtSection: React.FC<FlirtSectionProps> = ({
                 </div>
             )}
 
-            {/* --- COMPOSER (EXPANDABLE MODAL) --- */}
-            {isComposerExpanded && (
-                <div className="absolute inset-0 z-50 bg-black/20 backdrop-blur-sm flex items-start justify-center p-4 pt-16 animate-in fade-in duration-200">
-                    <div className="absolute inset-0" onClick={() => setIsComposerExpanded(false)}></div>
-                    <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl animate-in slide-in-from-top-4 duration-200 relative pointer-events-auto flex flex-col max-h-[90vh]">
-                        {/* Header */}
-                        <div className="p-5 pb-2">
-                            <div className="flex justify-between items-center mb-4">
-                                <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">
-                                    {activeTab === 'thoughts' && !activeThreadId ? 'New Random Thought 💭' : 'AI Mood Assistant 🧞‍♂️'}
-                                </h4>
-                                <button onClick={() => setIsComposerExpanded(false)} className="text-gray-300 hover:text-gray-500 font-bold px-2 py-1 text-xs tracking-widest">CANCEL</button>
-                            </div>
+            {/* --- INTEGRATED COMPOSER AREA --- */}
+            {activeTab !== 'activity' && (
+                <div className={`bg-white border-t border-gray-100 shrink-0 z-20 transition-all rounded-b-2xl relative ${isComposerExpanded ? 'p-2 sm:p-4' : 'p-2'}`}>
+                    <button
+                        onClick={() => setIsComposerExpanded(!isComposerExpanded)}
+                        className="absolute -top-6 left-1/2 -translate-x-1/2 bg-white border border-gray-100 border-b-0 rounded-t-lg px-4 py-0.5 text-gray-400 hover:text-indigo-500 shadow-sm transition-colors z-30"
+                        title={isComposerExpanded ? "Collapse Composer" : "Expand Composer"}
+                    >
+                        <svg className={`w-4 h-4 transition-transform ${!isComposerExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </button>
 
-                            {activeTab === 'thoughts' && !activeThreadId && (
-                                <div className="mb-4 relative">
-                                    <input
-                                        type="text"
-                                        placeholder="What's on your mind? (Title)"
-                                        className="w-full text-lg font-bold border-b border-gray-200 py-2 outline-none focus:border-indigo-500 placeholder-gray-300 transition-colors"
-                                        onChange={(e) => handleInputChange(e, setThreadSubject)}
-                                        value={threadSubject}
-                                        autoFocus
+                    <div className="max-w-3xl mx-auto flex flex-col gap-2">
+                        {isComposerExpanded ? (
+                            <>
+                                {/* Thread Subject Input (Thoughts only) */}
+                                {activeTab === 'thoughts' && !activeThreadId && (
+                                    <div className="mb-2 px-2 relative">
+                                        <input
+                                            type="text"
+                                            placeholder="What's on your mind? (Title)"
+                                            className="w-full text-base font-bold bg-transparent border-b border-gray-200 py-1 outline-none focus:border-indigo-400 placeholder-gray-400 transition-colors"
+                                            onChange={(e) => handleInputChange(e, setThreadSubject)}
+                                            value={threadSubject}
+                                        />
+                                        <MentionSuggestions
+                                            query={mentionQuery}
+                                            terms={terms || []}
+                                            onSelect={(term) => handleMentionSelect(term, setThreadSubject, threadSubject)}
+                                            position="top"
+                                        />
+                                    </div>
+                                )}
+
+                                {/* AI Assistant Explanatory Copy */}
+                                <div className="px-2 mb-1.5 mt-1">
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                                        <span className="text-indigo-400">✨ AI Assist</span> Let AI draft a message based on your context.
+                                    </p>
+                                </div>
+
+                                {/* Top Context Bar / Tone Selectors */}
+                                <div className="flex items-center gap-2 px-2 mb-1">
+                                    <div className="flex bg-gray-50 rounded-lg p-0.5 border border-gray-100">
+                                        {(['sweet', 'spicy', 'thoughtful'] as const).map(tone => (
+                                            <button
+                                                key={tone}
+                                                onClick={() => setAiTone(tone)}
+                                                className={`px-2 py-1 rounded-md text-[9px] sm:text-[10px] font-bold uppercase tracking-wider transition-all ${aiTone === tone ? (activeTab === 'flirts' ? 'bg-white text-pink-600 shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : 'text-gray-400 hover:text-gray-600'
+                                                    }`}
+                                            >
+                                                {tone === 'sweet' ? '🍬 Sweet' : tone === 'spicy' ? '🌶️ Spicy' : '🤔 Deep'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={generateAIDraft}
+                                        disabled={isDrafting}
+                                        className={`ml-auto p-1.5 rounded-lg transition-colors flex items-center gap-1 text-[10px] font-bold ${activeTab === 'flirts' ? 'bg-pink-50 text-pink-500 hover:bg-pink-100' : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'}`}
+                                        title="Magic Write"
+                                    >
+                                        {isDrafting ? <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div> : '✨ Help me say something...'}
+                                    </button>
+                                </div>
+
+                                {/* Integrated Input Box */}
+                                <div className={`flex flex-col bg-[#f0f2f5] border border-transparent focus-within:ring-2 rounded-2xl shadow-sm overflow-hidden transition-all duration-300 relative ${activeTab === 'flirts' ? 'focus-within:border-pink-400 focus-within:ring-pink-100/50' : 'focus-within:border-indigo-400 focus-within:ring-indigo-100/50'}`}>
+
+                                    <textarea
+                                        ref={draftInputRef}
+                                        value={draft}
+                                        onChange={(e) => handleInputChange(e, setDraft)}
+                                        placeholder={
+                                            activeTab === 'thoughts'
+                                                ? (activeThreadId ? "Reply to thought..." : "Start a new thought...")
+                                                : "Type it yourself, use the magic wand above, or a combination of the two..."
+                                        }
+                                        className="w-full bg-transparent px-4 py-3 text-[15px] sm:text-base text-gray-800 placeholder-gray-500 focus:placeholder-gray-400 resize-none outline-none min-h-[44px] max-h-[120px] overflow-y-auto"
+                                        rows={1}
                                     />
                                     <MentionSuggestions
                                         query={mentionQuery}
                                         terms={terms || []}
-                                        onSelect={(term) => handleMentionSelect(term, setThreadSubject, threadSubject)}
+                                        onSelect={(term) => handleMentionSelect(term, setDraft, draft)}
+                                        position="top"
                                     />
-                                </div>
-                            )}
 
-                            {/* Tone Selectors */}
-                            <div className="flex items-center gap-2 mb-3">
-                                <div className="flex-grow flex gap-2">
-                                    {(['sweet', 'spicy', 'thoughtful'] as const).map(tone => (
-                                        <button
-                                            key={tone}
-                                            onClick={() => setAiTone(tone)}
-                                            className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${aiTone === tone
-                                                ? 'bg-indigo-600 text-white shadow-md transform scale-105'
-                                                : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border border-transparent'
-                                                }`}
-                                        >
-                                            <span>{tone === 'sweet' ? '🍬' : tone === 'spicy' ? '🌶️' : '🤔'}</span>
-                                            {tone}
-                                        </button>
-                                    ))}
-                                </div>
-                                <button
-                                    onClick={generateAIDraft}
-                                    disabled={isDrafting}
-                                    className="p-3 bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all"
-                                    title="Magic Write"
-                                >
-                                    {isDrafting ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : '✨'}
-                                </button>
-                            </div>
-
-                            {/* Tone Preview */}
-                            <div className={`p-3 rounded-xl border flex items-start gap-3 transition-colors ${aiTone === 'sweet' ? 'bg-pink-50 border-pink-100' :
-                                aiTone === 'spicy' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'
-                                }`}>
-                                <div className="text-lg">
-                                    {aiTone === 'sweet' ? '🥰' : aiTone === 'spicy' ? '💃' : '🧐'}
-                                </div>
-                                <div>
-                                    <p className={`text-xs font-bold uppercase ${aiTone === 'sweet' ? 'text-pink-600' :
-                                        aiTone === 'spicy' ? 'text-red-600' : 'text-amber-600'
-                                        }`}>
-                                        {aiTone === 'sweet' ? 'Sweet & Romantic' : aiTone === 'spicy' ? 'Bold & Spicy' : 'Deep & Thoughtful'}
-                                    </p>
-                                    <p className="text-sm text-gray-600 italic mt-0.5">
-                                        "{aiTone === 'sweet' ? "Thinking of you..." : aiTone === 'spicy' ? "Can't wait to see you..." : "I appreciate how you..."}"
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Input Area */}
-                        <div className="px-5 py-2 flex-grow relative">
-                            <textarea
-                                ref={draftInputRef}
-                                value={draft}
-                                onChange={(e) => handleInputChange(e, setDraft)}
-                                placeholder={
-                                    activeTab === 'thoughts'
-                                        ? (activeThreadId ? "Add to this thought..." : "What's on your mind?")
-                                        : "Send a quick flirt..."
-                                }
-                                className="w-full h-32 md:h-48 text-lg text-gray-700 placeholder-gray-300 resize-none outline-none bg-transparent"
-                            />
-                            <MentionSuggestions
-                                query={mentionQuery}
-                                terms={terms || []}
-                                onSelect={(term) => handleMentionSelect(term, setDraft, draft)}
-                                position="bottom"
-                            />
-
-                            {(stagedImage || audioBlob) && (
-                                <div className="flex gap-3 mt-2">
-                                    {stagedImage && (
-                                        <div className="relative group">
-                                            <img src={URL.createObjectURL(stagedImage)} className="w-16 h-16 rounded-lg object-cover shadow-sm border border-gray-200" alt="Preview" />
-                                            <button onClick={() => setStagedImage(null)} className="absolute -top-1 -right-1 bg-white text-red-500 rounded-full w-5 h-5 shadow-sm flex items-center justify-center border border-gray-100 hover:bg-gray-50">✕</button>
+                                    {/* Attachments Preview */}
+                                    {(stagedImage || audioBlob) && (
+                                        <div className="flex gap-3 px-4 pb-2">
+                                            {stagedImage && (
+                                                <div className="relative group">
+                                                    <img src={URL.createObjectURL(stagedImage)} className="w-12 h-12 rounded-lg object-cover shadow-sm border border-gray-200" alt="Preview" />
+                                                    <button onClick={() => setStagedImage(null)} className="absolute -top-1 -right-1 bg-white text-red-500 rounded-full w-4 h-4 text-[10px] shadow-sm flex items-center justify-center border border-gray-100 hover:bg-gray-50">✕</button>
+                                                </div>
+                                            )}
+                                            {audioBlob && (
+                                                <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-2 py-1 h-8 rounded-lg text-xs font-bold mt-auto">
+                                                    <span>🎤 Voice Note</span>
+                                                    <button onClick={() => setAudioBlob(null)} className="text-blue-400 hover:text-blue-700">✕</button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
-                                    {audioBlob && (
-                                        <div className="flex items-center gap-2 bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-bold">
-                                            <span>🎤 Voice Note</span>
-                                            <button onClick={() => setAudioBlob(null)} className="text-blue-400 hover:text-blue-700">✕</button>
+
+                                    {/* Input Footer */}
+                                    <div className="flex justify-between items-center px-2 py-1.5 border-t border-transparent">
+                                        {/* Left Actions */}
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => cameraInputRef.current?.click()} className="p-2 rounded-xl text-gray-400 hover:text-indigo-500 hover:bg-white transition-all">📸</button>
+                                            <button onClick={() => fileInputRef.current?.click()} className="p-2 rounded-xl text-gray-400 hover:text-indigo-500 hover:bg-white transition-all">🖼️</button>
+                                            <div className="w-px h-6 bg-gray-300 mx-1"></div>
+                                            <div className="scale-90 opacity-70 hover:opacity-100 transition-opacity Origin-left">
+                                                <AudioRecorder onStop={setAudioBlob} minimal={true} />
+                                            </div>
                                         </div>
-                                    )}
+
+                                        {/* Right Actions */}
+                                        <div className="flex items-center gap-2">
+                                            {activeTab === 'flirts' && (
+                                                <select className="bg-transparent text-[10px] font-bold text-gray-400 outline-none cursor-pointer hover:text-gray-600 mix-blend-multiply">
+                                                    <option>48h</option>
+                                                    <option>1h</option>
+                                                    <option>Never</option>
+                                                </select>
+                                            )}
+                                            <button
+                                                onClick={handleSend}
+                                                disabled={(!draft.trim() && !stagedImage && !audioBlob) || uploadStatus !== 'idle' || (activeTab === 'thoughts' && !activeThreadId && !threadSubject.trim())}
+                                                className={`w-8 h-8 flex items-center justify-center text-white rounded-full transition-all disabled:opacity-0 disabled:scale-0 disabled:w-0 disabled:ml-0 duration-200 ease-out shadow-sm ${activeTab === 'flirts' ? 'bg-pink-500 hover:bg-pink-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                                                title={activeTab === 'thoughts' && !activeThreadId ? "Start Thought" : "Send"}
+                                            >
+                                                {uploadStatus !== 'idle' ? (
+                                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                ) : (
+                                                    <svg className="w-3.5 h-3.5 translate-x-[1px]" viewBox="0 0 24 24" fill="currentColor">
+                                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                                    </svg>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-4 bg-gray-50 flex items-center justify-between border-t border-gray-100 rounded-b-3xl">
-                            <div className="flex gap-1">
-                                <button onClick={() => cameraInputRef.current?.click()} className="p-2.5 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-white hover:shadow-sm transition-all">📸</button>
-                                <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl text-gray-400 hover:text-gray-600 hover:bg-white hover:shadow-sm transition-all">🖼️</button>
-                                <div className="w-px h-8 bg-gray-200 mx-1"></div>
-                                <AudioRecorder onStop={setAudioBlob} minimal={true} />
+                            </>
+                        ) : (
+                            <div
+                                onClick={() => {
+                                    setIsComposerExpanded(true);
+                                    setTimeout(() => draftInputRef.current?.focus(), 50);
+                                }}
+                                className="flex items-center gap-3 bg-gray-50 border border-gray-100 hover:border-indigo-100 px-4 py-2.5 rounded-xl cursor-text transition-all group"
+                            >
+                                <span className="text-gray-400 text-sm flex-grow select-none truncate">
+                                    {draft || (activeTab === 'thoughts' ? (activeThreadId ? "Reply to thought..." : "Start a new thought...") : "Type it yourself, use the magic wand above, or a combination of the two...")}
+                                </span>
+                                <div className="flex items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                    <div className={`${uploadStatus !== 'idle' ? "pointer-events-none" : ""}`}>
+                                        <AudioRecorder onStop={(blob) => { setAudioBlob(blob); setIsComposerExpanded(true); }} minimal={true} />
+                                    </div>
+                                </div>
                             </div>
-
-                            <div className="flex items-center gap-3">
-                                <select className="bg-transparent text-xs font-bold text-gray-400 outline-none cursor-pointer hover:text-gray-600 hidden sm:block">
-                                    <option>48h</option>
-                                    <option>1h</option>
-                                    <option>Never</option>
-                                </select>
-                                <button
-                                    onClick={handleSend}
-                                    disabled={(!draft.trim() && !stagedImage && !audioBlob) || uploadStatus !== 'idle' || (activeTab === 'thoughts' && !activeThreadId && !threadSubject.trim())}
-                                    className="px-6 py-2.5 bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-600 hover:shadow-indigo-300 transition-all disabled:opacity-50 flex items-center gap-2"
-                                >
-                                    {uploadStatus !== 'idle' ? 'Sending...' : (activeTab === 'thoughts' && !activeThreadId ? 'Start Thought' : 'SEND')}
-                                </button>
-                            </div>
-                        </div>
+                        )}
                     </div>
-                </div>
-            )}
-
-            {/* --- COMPOSER (COMPACT BOTTOM BAR) --- */}
-            {!isComposerExpanded && (activeTab !== 'activity') && (
-                <div className="bg-white p-3 border-t border-gray-100 sticky bottom-0 z-30">
-                    <form className="flex items-end gap-2" onClick={() => setIsComposerExpanded(true)}>
-                        <div className="flex gap-1 mb-1.5">
-                            <button type="button" className="p-2 text-indigo-400 bg-indigo-50 rounded-full transition" title="Tap to expand">✨</button>
-                        </div>
-
-                        <div className="flex-grow bg-gray-100 rounded-[1.5rem] px-4 py-2 cursor-text transition-colors group hover:bg-gray-50 border border-transparent hover:border-indigo-100" title="Tap to write">
-                            <p className="text-gray-400 py-1.5 select-none truncate">
-                                {activeTab === 'thoughts'
-                                    ? (activeThreadId ? "Reply to thought..." : "Start a new thought...")
-                                    : (draft || "Type a flirt...")}
-                            </p>
-                        </div>
-
-                        <div className="mb-0.5">
-                            <button type="button" className="p-3 bg-gray-100 text-gray-400 rounded-full hover:bg-gray-200 transition">
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                            </button>
-                        </div>
-                    </form>
                 </div>
             )}
 

@@ -8,9 +8,10 @@ interface FilterPanelProps {
   filters: Filters;
   onFilterChange: (newFilters: Partial<Filters>) => void;
   onTagToggle: (tag: string) => void;
+  currentUser?: import('../types').User;
 }
 
-const FilterPanel: React.FC<FilterPanelProps> = ({ isOpen, onClose, filters, onFilterChange, onTagToggle }) => {
+const FilterPanel: React.FC<FilterPanelProps> = ({ isOpen, onClose, filters, onFilterChange, onTagToggle, currentUser }) => {
   return (
     <>
       <div
@@ -40,6 +41,17 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ isOpen, onClose, filters, onF
         <div className="p-6 overflow-y-auto flex-grow h-full bg-gray-50/50">
           <div className="space-y-6 pb-6 border-b border-gray-200">
             <div>
+              <label htmlFor="search-keyword" className="font-bold text-sm mb-2 block text-gray-700">Search By Keyword</label>
+              <input
+                id="search-keyword"
+                type="text"
+                placeholder="Terms, tags, or feelings..."
+                value={filters.searchTerm}
+                onChange={(e) => onFilterChange({ searchTerm: e.target.value })}
+                className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+              />
+            </div>
+            <div>
               <label htmlFor="category-filter" className="font-bold text-sm mb-2 block text-gray-700">Filter by Category</label>
               <select
                 id="category-filter"
@@ -64,7 +76,30 @@ const FilterPanel: React.FC<FilterPanelProps> = ({ isOpen, onClose, filters, onF
                 <option value="za">Name (Z-A)</option>
               </select>
             </div>
-            {/* Added Partner Filters */}
+
+            {/* Spice Limit Toggle */}
+            {currentUser?.spiceLimit && (
+              <div className="pt-4 border-t border-gray-100">
+                <label className="flex items-start space-x-3 cursor-pointer group">
+                  <div className="pt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={filters.hideAboveSpiceLimit}
+                      onChange={(e) => onFilterChange({ hideAboveSpiceLimit: e.target.checked })}
+                      className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 transition shadow-sm"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-gray-800 text-sm font-bold block group-hover:text-blue-600 transition">Hide Terms Above Comfort Zone</span>
+                    <span className="text-gray-500 text-xs block mt-1 leading-relaxed pr-2">
+                      Currently limited to <span className="font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mr-1">{currentUser.spiceLimit}</span>
+                      Turn off to explore all intimacy levels.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            )}
+
             {/* Partner Filters */}
             <div className="pt-4 border-t border-gray-100">
               <h4 className="text-sm font-bold text-gray-700 mb-3">Partner's Interests</h4>

@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate', // Force critical updates immediately
-      includeAssets: ['Logo-V3.svg', 'robots.txt', 'apple-touch-icon.png'],
+      includeAssets: ['Logo-V2.svg', 'robots.txt', 'apple-touch-icon.png'],
       manifest: {
         name: "The Couple's Currency",
         short_name: "Couple's Currency",
@@ -17,7 +17,7 @@ export default defineConfig({
         display: "standalone",
         icons: [
           {
-            src: "Logo-V3.svg",
+            src: "Logo-V2.svg",
             sizes: "512x512",
             type: "image/svg+xml",
             purpose: "any maskable"

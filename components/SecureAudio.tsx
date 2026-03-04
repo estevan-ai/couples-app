@@ -34,28 +34,24 @@ const SecureAudio: React.FC<SecureAudioProps> = ({ path, ivStr, encryptedKey, sh
         try {
             let blob: Blob;
 
-            // Scenario A: Legacy/Group (Shared Key)
-            if (sharedKey && path && ivStr) {
-                const storageRef = ref(storage, path);
-                const encryptedBlob = await getBlob(storageRef);
-                blob = await decryptBlob(encryptedBlob, sharedKey, stringToIv(ivStr));
-            }
-            // Scenario B: Zero-Knowledge (Hybrid)
-            else if (encryptedKey && path) {
+            // Scenario A: Zero-Knowledge (Hybrid)
+            if (encryptedKey && path && privateKey) {
                 // Note: 'path' prop is reused for storagePath in some contexts, or we need a specific prop.
                 // In MessageBubble, we pass 'path={note.audioPath}'.
                 // If it's a ZK audio, 'audioPath' might be the storage path.
 
                 if (isMine) throw new Error("Blind Drop: Cannot decrypt my own sent ZK audio without local storage?");
 
-                if (isMine) throw new Error("Blind Drop: Cannot decrypt my own sent ZK audio without local storage?");
-
-                if (!privateKey) throw new Error("No private key provided.");
-
                 const aesKey = await unwrapAESKey(encryptedKey, privateKey);
                 const storageRef = ref(storage, path);
                 const encryptedBlob = await getBlob(storageRef);
                 blob = await decryptBlob(encryptedBlob, aesKey, stringToIv(ivStr || ''));
+            }
+            // Scenario B: Legacy/Group (Shared Key)
+            else if (sharedKey && path && ivStr) {
+                const storageRef = ref(storage, path);
+                const encryptedBlob = await getBlob(storageRef);
+                blob = await decryptBlob(encryptedBlob, sharedKey, stringToIv(ivStr));
             } else {
                 console.error("Missing audio decryption params");
                 return;

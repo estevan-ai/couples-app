@@ -6,7 +6,7 @@ import { auth } from '../firebase';
 import { generateRSAKeyPair, exportPublicKey, exportPrivateKey } from '../utils/encryption';
 
 interface UserSetupProps {
-    onSetupComplete: (name: string, isDemo: boolean, email: string, initialBookmarks?: Record<number, Bookmark>, publicKey?: string, privateKey?: string, connectId?: string) => void;
+    onSetupComplete: (name: string, isDemo: boolean, email: string, initialBookmarks?: Record<number, Bookmark>, publicKey?: string, privateKey?: string, connectId?: string, spiceLimit?: string) => void;
     initialStep?: 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour' | 'invite_partner';
     initialName?: string;
     initialEmail?: string;
@@ -43,7 +43,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
     const [name, setName] = useState(initialName);
     const [email, setEmail] = useState(initialEmail);
     const [password, setPassword] = useState('');
-    const [step, setStep] = useState<'loading' | 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour' | 'invite_partner'>('age');
+    const [step, setStep] = useState<'loading' | 'age' | 'auth' | 'name' | 'spice_intro' | 'onboarding' | 'tour' | 'invite_partner'>(initialStep === 'age' ? 'loading' : initialStep);
     const [generatedKeys, setGeneratedKeys] = useState<{ public?: string; private?: string }>({});
     const [generatedConnectId, setGeneratedConnectId] = useState<string>("");
 
@@ -122,7 +122,6 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                 // Found user? Auto-advance to name setup (skipping Age/Auth screens)
                 setStep('name');
             }
-            // If no user, we stay at 'age' (default), so user can interact immediately.
         });
 
         // Explicitly check for redirect result (Redundancy for mobile)
@@ -134,9 +133,15 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                 setStep('name');
             }
         }).catch(e => {
-            if (mounted) console.error("Redirect Result Error:", e);
+            if (mounted) {
+                console.error("Redirect Result Error:", e);
+                setAuthError(e.message || "Failed to complete Google Sign-In redirect. If using localtunnel, ensure the URL is authorized in Firebase Console.");
+            }
         }).finally(() => {
-            if (mounted) setIsVerifyingRedirect(false);
+            if (mounted) {
+                setIsVerifyingRedirect(false);
+                setStep((currentStep) => currentStep === 'loading' ? 'age' : currentStep);
+            }
         });
 
         return () => {
@@ -149,26 +154,22 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
         setAuthError(null);
         setIsLoggingIn(true);
 
-        try {
-            // Attempt Popup Login first (Works on Desktop & many modern mobile browsers)
-            const provider = new GoogleAuthProvider();
-            const result = await signInWithPopup(auth, provider);
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
 
-            // Success!
+        // Try popup first (works inside iOS PWAs via in-app browser).
+        try {
+            const result = await signInWithPopup(auth, provider);
             if (result.user.displayName) setName(result.user.displayName.split(' ')[0]);
             if (result.user.email) setEmail(result.user.email);
             setStep('name');
-
         } catch (error: any) {
             console.error("Popup Login Failed:", error.code, error.message);
-
-            // If Popup fails (blocked, closed, or mobile environment issue), Try Redirect
-            if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user' || error.code === 'auth/operation-not-supported-in-this-environment') {
-                console.log("Falling back to Redirect Method...");
+            // Fallback to redirect if popup is blocked
+            if (error.code === 'auth/popup-blocked' || error.code === 'auth/popup-closed-by-user') {
+                console.log("Popup blocked. Falling back to redirect...");
                 try {
-                    const provider = new GoogleAuthProvider();
                     await signInWithRedirect(auth, provider);
-                    // Do NOT reset isLoggingIn here, as we are redirecting
                     return;
                 } catch (redirectError: any) {
                     console.error("Redirect Fallback Failed:", redirectError);
@@ -176,7 +177,6 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                     setIsLoggingIn(false);
                 }
             } else {
-                // Genuine Auth Error (e.g., network, account issue)
                 setAuthError(error.message || "Could not sign in with Google.");
                 setIsLoggingIn(false);
             }
@@ -185,6 +185,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
 
     const handleGoogleRedirect = () => {
         const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
         signInWithRedirect(auth, provider);
     };
 
@@ -199,7 +200,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
             <div className="max-w-md w-full bg-white rounded-[3rem] shadow-2xl p-6 sm:p-10 text-center relative border border-white/20 overflow-hidden min-h-[720px] flex flex-col justify-center animate-in zoom-in-95 duration-500">
                 {name.trim() !== '' && ['spice_intro', 'onboarding', 'tour'].includes(step) && (
                     <button
-                        onClick={() => onSetupComplete(name, false, email, currentBookmarks)}
+                        onClick={() => onSetupComplete(name, false, email, currentBookmarks, undefined, undefined, undefined, selectedSpice || undefined)}
                         className="absolute top-6 right-6 z-50 px-4 py-2 bg-gray-100/80 backdrop-blur-sm rounded-full text-xs font-bold text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-all shadow-sm border border-gray-200"
                         aria-label="Skip to Dashboard"
                     >
@@ -218,7 +219,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                     <div className="space-y-8 animate-in fade-in duration-500">
                         <div className="text-center mb-10">
                             <img src="/Logo-V2.svg" alt="Couples Currency" className="w-[280px] mx-auto mb-8 drop-shadow-2xl" />
-                            <h1 className="text-4xl font-serif font-bold text-gray-800 mb-2">The Couple's Currency</h1>
+                            <h1 className="text-2xl sm:text-4xl font-serif font-bold text-gray-800 mb-2">The Couple's Currency</h1>
                             <p className="text-lg font-serif italic text-gray-500">Investing in Us.</p>
                         </div>
                         <button onClick={() => setStep('auth')} className="w-full py-6 text-xl font-bold bg-blue-600 text-white rounded-[2rem] hover:bg-blue-700 transition shadow-xl">I am 18+</button>
@@ -347,153 +348,37 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                 {step === 'spice_intro' && (
                     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 h-full flex flex-col">
                         <div className="text-left bg-blue-50/50 p-5 rounded-[2rem] border border-blue-100 mb-2">
-                            <h2 className="text-xl font-serif font-bold text-gray-800 mb-1">Spice Spectrum</h2>
+                            <h2 className="text-xl font-serif font-bold text-gray-800 mb-1">Set Your Comfort Zone</h2>
                             <p className="text-[10px] text-gray-500 leading-relaxed font-medium">
-                                💡 <span className="text-blue-600 font-bold uppercase">How it works:</span> Click a category to see terms. Tap multiple cards to group-save them. Finish all 5 to complete setup!
+                                💡 <span className="text-blue-600 font-bold uppercase">How it works:</span> Choose the maximum level of "spice" you want visible in the Intimacy Directory by default. You can change this later in settings to explore further.
                             </p>
                         </div>
 
                         <div className="flex-grow grid grid-cols-1 gap-3 overflow-y-auto pr-1 scrollbar-hide py-2">
                             {categories.map((cat, idx) => {
-                                const isDone = isCategoryComplete(cat.name);
+                                const isSelected = selectedSpice === cat.name;
                                 return (
                                     <button
                                         key={idx}
-                                        onClick={() => { setSelectedSpice(cat.name); setStep('onboarding'); }}
-                                        className={`group relative flex items-center gap-4 p-4 rounded-3xl border text-left transition-all active:scale-95 ${isDone ? 'bg-green-50/40 border-green-200 shadow-none' : 'bg-white border-gray-100 shadow-sm hover:border-blue-200'} `}
+                                        onClick={() => { setSelectedSpice(cat.name); setStep('tour'); }}
+                                        className={`group relative flex items-center gap-4 p-4 rounded-3xl border text-left transition-all active:scale-95 ${isSelected ? 'bg-indigo-50 border-indigo-200 ring-2 ring-indigo-500 shadow-none' : 'bg-white border-gray-100 shadow-sm hover:border-blue-200'} `}
                                     >
                                         <div className={`w-14 h-14 ${cat.color} rounded-2xl shadow-inner flex items-center justify-center text-3xl flex-shrink-0 relative`}>
                                             {cat.icon}
-                                            {isDone && (
-                                                <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center text-[10px] text-white animate-in zoom-in">✓</div>
-                                            )}
                                         </div>
                                         <div className="flex-grow">
                                             <p className="font-black text-xs uppercase tracking-tight text-gray-800">{cat.name}</p>
                                             <p className="text-[11px] text-gray-500 leading-snug mt-0.5">{cat.desc}</p>
                                         </div>
-                                        {!isDone && <span className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity text-sm font-bold pr-2">Start →</span>}
+                                        <span className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity text-sm font-bold pr-2">Select →</span>
                                     </button>
                                 );
                             })}
                         </div>
-
-                        <div className="pt-4 border-t border-gray-100">
-                            <div className="flex justify-between items-center mb-4 px-2">
-                                <span className="text-[10px] font-black uppercase text-gray-400">Total Progress</span>
-                                <span className="text-xs font-bold text-blue-600">{completedCategoriesCount} / 5 Levels Completed</span>
-                            </div>
-                            <button
-                                onClick={() => setStep('tour')}
-                                className={`w-full py-5 text-xl font-bold rounded-[2rem] transition-all shadow-xl ${completedCategoriesCount > 0 ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-400 cursor-not-allowed'} `}
-                                disabled={completedCategoriesCount === 0}
-                            >
-                                {completedCategoriesCount === 5 ? 'Finish & Explore' : 'Continue to Dashboard'}
-                            </button>
-                        </div>
                     </div>
                 )}
 
-                {step === 'onboarding' && (
-                    <div key={selectedSpice} className="animate-in slide-in-from-right-4 duration-400 flex flex-col h-full relative">
-                        <header className="flex items-center justify-between mb-6">
-                            <button onClick={() => setStep('spice_intro')} className="text-gray-400 text-xs font-black uppercase tracking-widest flex items-center gap-1 hover:text-gray-800 transition-colors">
-                                <span>←</span> Back
-                            </button>
-                            <div className="text-center">
-                                <h2 className="text-lg font-serif font-bold text-gray-800">{selectedSpice}</h2>
-                                <div className="text-[8px] font-black uppercase text-blue-500 tracking-widest">Select cards below</div>
-                            </div>
-                            <div className="text-[10px] font-black text-blue-500 bg-blue-50 px-2.5 py-1.5 rounded-xl border border-blue-100 shadow-sm">
-                                {galleryTerms.filter(t => currentBookmarks[t.id]).length}/6
-                            </div>
-                        </header>
-
-                        <div className="flex-grow overflow-y-auto pr-1 scrollbar-hide">
-                            <div className="grid grid-cols-2 gap-3 pb-56">
-                                {galleryTerms.map(term => {
-                                    const isSelected = selectedTermIds.includes(term.id);
-                                    const bookmark = currentBookmarks[term.id];
-                                    return (
-                                        <button
-                                            key={term.id}
-                                            onClick={() => toggleTermSelection(term.id)}
-                                            className={`relative p-4 rounded-3xl border-2 text-left transition-all h-44 flex flex-col justify-between ${bookmark ? 'bg-gray-50 border-gray-100 opacity-40 grayscale pointer-events-none shadow-none' :
-                                                isSelected ? 'bg-blue-50 border-blue-500 ring-4 ring-blue-50' :
-                                                    'bg-white border-gray-100 hover:border-gray-300 shadow-sm'
-                                                } `}
-                                        >
-                                            <div className="overflow-hidden">
-                                                <p className="font-bold text-sm text-gray-800 leading-tight mb-2 truncate">{term.name}</p>
-                                                <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-4">{term.definition}</p>
-                                            </div>
-                                            {isSelected && (
-                                                <div className="absolute top-2 right-2 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-[10px] text-white shadow-md border-2 border-white animate-in zoom-in">✓</div>
-                                            )}
-                                            {bookmark && (
-                                                <div className="absolute bottom-2 right-2 text-2xl filter drop-shadow-sm">
-                                                    {bookmark === 'love' ? '❤️' : bookmark === 'like' ? '🤔' : bookmark === 'work' ? '🎟️' : bookmark === 'unsure' ? '❔' : '👎'}
-                                                </div>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Minimalist Floating Action Bar - Updated to 3+2 layout */}
-                        <div className={`absolute bottom-0 left-0 right-0 p-4 z-10 transition-all duration-500 transform ${selectedTermIds.length > 0 ? 'translate-y-0 opacity-100' : 'translate-y-full opacity-0 pointer-events-none'} `}>
-                            <div className="bg-white/95 backdrop-blur-md border border-gray-200 p-5 rounded-[2.5rem] shadow-2xl space-y-3">
-                                <div className="flex justify-between items-center mb-1">
-                                    <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest">Group Sort ({selectedTermIds.length})</p>
-                                    <button onClick={() => setSelectedTermIds([])} className="text-[10px] font-bold text-gray-400 hover:text-red-500 transition-colors">Clear</button>
-                                </div>
-
-                                {/* Row 1: 3 columns */}
-                                <div className="grid grid-cols-3 gap-2">
-                                    {[
-                                        { type: 'like' as Bookmark, icon: '🤔', label: 'Like', color: 'bg-yellow-400' },
-                                        { type: 'love' as Bookmark, icon: '❤️', label: 'Love', color: 'bg-red-500' },
-                                        { type: 'work' as Bookmark, icon: '🎟️', label: 'Work', color: 'bg-indigo-600' }
-                                    ].map(action => (
-                                        <button
-                                            key={action.type}
-                                            onClick={() => handleBatchAction(action.type)}
-                                            className={`py-3.5 ${action.color} text-white rounded-2xl flex flex-col items-center gap-1 shadow-md active:scale-95 transition-all`}
-                                        >
-                                            <span className="text-xl">{action.icon}</span>
-                                            <span className="text-[9px] font-black uppercase tracking-tighter">{action.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {/* Row 2: 2 columns */}
-                                <div className="grid grid-cols-2 gap-2">
-                                    {[
-                                        { type: 'skip' as Bookmark, icon: '👎', label: 'Not Interested', color: 'bg-gray-400' },
-                                        { type: 'unsure' as Bookmark, icon: '❔', label: 'Unsure/Skip', color: 'bg-gray-200 text-gray-600' }
-                                    ].map(action => (
-                                        <button
-                                            key={action.type}
-                                            onClick={() => handleBatchAction(action.type)}
-                                            className={`py-3.5 ${action.color} ${action.type === 'unsure' ? '' : 'text-white'} rounded-2xl flex flex-col items-center gap-1 shadow-md active:scale-95 transition-all`}
-                                        >
-                                            <span className="text-xl">{action.icon}</span>
-                                            <span className="text-[9px] font-black uppercase tracking-tighter">{action.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Quiet empty state prompt */}
-                        {selectedTermIds.length === 0 && (
-                            <div className="absolute bottom-10 left-0 right-0 pointer-events-none animate-in fade-in duration-700">
-                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-[0.3em]">Tap terms to sort</p>
-                            </div>
-                        )}
-                    </div>
-                )}
+                {/* REMOVED ONBOARDING BATCH STEP */}
 
                 {step === 'tour' && (
                     <div className="animate-in slide-in-from-right-4 duration-500 flex flex-col h-full">
@@ -544,7 +429,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         } catch (e) {
                                             console.error("Key gen failed in setup:", e);
                                             // Fallback: Proceed even if keys fail? Usually better to fail safely.
-                                            onSetupComplete(name.trim() || 'User', false, email, currentBookmarks, undefined, undefined, connId);
+                                            onSetupComplete(name.trim() || 'User', false, email, currentBookmarks, undefined, undefined, connId, selectedSpice || undefined);
                                         }
                                     }
                                 }}
@@ -622,7 +507,8 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                                         currentBookmarks,
                                         generatedKeys.public,
                                         generatedKeys.private,
-                                        generatedConnectId
+                                        generatedConnectId,
+                                        selectedSpice || undefined
                                     );
                                 }}
                                 className="w-full py-4 text-sm font-bold text-gray-400 hover:text-gray-600 transition tracking-widest uppercase hover:underline"
@@ -633,7 +519,7 @@ const UserSetup: React.FC<UserSetupProps> = ({ onSetupComplete, initialStep = 'a
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     );
 };
 

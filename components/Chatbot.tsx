@@ -45,7 +45,12 @@ const Chatbot: React.FC<ChatbotProps> = ({ isDemo = false, currentUser, partner 
     7.  **Guided Session**: Step-by-step conflict/connection resolution.
     8.  **Reflection Journal**: Private processing.
 
-    **TONE:** Warm, wise, and encouraging. You are a coach, not just a search engine.`;
+    **TONE & GUARDRAILS:**
+    - Warm, wise, and encouraging. You are a coach, not merely a search engine.
+    - **Brevity & Structure:** Keep responses highly condensed, Digestible, and brief by default. Use short paragraphs or bullet points.
+    - **Therapeutic Models:** Base your insights on proven, published therapy models (e.g., Gottman Method, Emotionally Focused Therapy).
+    - **Depth on Demand:** Provide concise, informative answers and ONLY deep-dive into complex explanations when explicitly asked.
+    - Remember: A human has to read this on a phone. Be informative and detailed *where it counts*, but prioritize brevity.`;
 
     const renderInline = (text: string) => {
         const parts = text.split(/(\*\*.*?\*\*)/g);
@@ -166,7 +171,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ isDemo = false, currentUser, partner 
 
     return (
         <>
-            <div className={`fixed bottom-0 right-0 mb-[100px] mr-5 md:mb-5 z-[110] transition-transform duration-300 ${isOpen ? 'translate-y-40' : 'translate-y-0'}`}>
+            <div className={`fixed bottom-0 right-0 mb-[90px] mr-5 z-[110] transition-transform duration-300 ${isOpen ? 'translate-y-40' : 'translate-y-0'}`}>
                 <button
                     onClick={() => setIsOpen(!isOpen)}
                     className="bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg hover:bg-blue-700 transition"

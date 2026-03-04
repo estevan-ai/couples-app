@@ -5,7 +5,7 @@ import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
     apiKey: "AIzaSyBOf3F6jeMwkHqzcNSXANhbxLVrhRsf1pw",
-    authDomain: "thecouplescurrency.firebaseapp.com",
+    authDomain: "thecouplescurrency.web.app",
     projectId: "thecouplescurrency",
     storageBucket: "thecouplescurrency.firebasestorage.app",
     messagingSenderId: "292918506746",
@@ -13,7 +13,7 @@ const firebaseConfig = {
     measurementId: "G-15M868RCFZ"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence);

@@ -39,35 +39,33 @@ const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, enc
                     let blob: Blob;
 
                     // Scenario A: Zero-Knowledge (Hybrid)
-                    if (encryptedKey && storagePath) {
+                    if (encryptedKey && storagePath && privateKey) {
                         if (isMine) {
                             throw new Error("Blind Drop: Key not saved for sender.");
                         }
 
-                        // 1. Get My Private Key (Props now)
-                        if (!privateKey) throw new Error("Private Key not found.");
-
-                        // 2. Unwrap the AES Key
+                        // 1. Unwrap the AES Key
                         console.log("[SecurePhoto] Unwrapping key...");
                         const aesKey = await unwrapAESKey(encryptedKey, privateKey);
 
-                        // 3. Download Encrypted Blob
+                        // 2. Download Encrypted Blob
                         console.log("[SecurePhoto] Downloading blob...", storagePath);
                         const blobRef = ref(storage, storagePath);
                         const encryptedBlob = await getBlob(blobRef);
 
-                        // 4. Decrypt Image
+                        // 3. Decrypt Image
                         console.log("[SecurePhoto] Decrypting blob...");
                         const iv = ivStr ? stringToIv(ivStr) : new Uint8Array(12);
                         blob = await decryptBlob(encryptedBlob, aesKey, iv);
                     }
                     // Scenario B: Legacy Symmetric
                     else if (sharedKey && path && ivStr) {
-                        console.log("[SecurePhoto] Legacy decryption...");
+                        console.log("[SecurePhoto] Legacy decryption...", { path });
                         const storageRef = ref(storage, path);
                         const encryptedBlob = await getBlob(storageRef);
                         blob = await decryptBlob(encryptedBlob, sharedKey, stringToIv(ivStr));
                     } else {
+                        console.error("[SecurePhoto] Missing parameters:", { encryptedKey: !!encryptedKey, storagePath: !!storagePath, privateKey: !!privateKey, sharedKey: !!sharedKey, path: !!path, ivStr: !!ivStr });
                         throw new Error("Missing decryption parameters");
                     }
 
@@ -77,10 +75,18 @@ const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, enc
             ]);
         } catch (err: any) {
             console.error("Decryption Error:", err);
-            // Show the actual error message if it's not a Blind Drop
-            setError(err.message.includes("Blind Drop") ? "Blind Drop" :
-                (err.message || "Decryption Failed"));
-        } finally {
+            // Enhanced error messaging for key mismatches
+            let msg = err.message || err.name || "Decryption Failed";
+
+            if (msg.includes("OperationError") || err.name === "OperationError") {
+                msg = "Key Mismatch: Your identity doesn't match this message. Try 'Identity Sync' in Account settings.";
+            } else if (msg.includes("Blind Drop")) {
+                msg = "Blind Drop";
+            }
+
+            setError(msg);
+        }
+        finally {
             setIsDecrypting(false);
         }
     };
@@ -88,8 +94,11 @@ const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, enc
     // Auto-decrypt restored (with timeout protection)
     // This attempts to decrypt immediately. If it hangs >15s, it sets 'error' and shows retry button.
     useEffect(() => {
-        if (!url && (encryptedKey || sharedKey)) {
-            // Wait for private key if it's a ZK message
+        // Prevent re-triggering if we already have a URL or an error
+        if (url || error) return;
+
+        if (encryptedKey || sharedKey) {
+            // Wait for private key if it's a ZK message and we are the receiver
             if (encryptedKey && !privateKey && !isMine) return;
 
             // Sender view logic handled by render, shouldn't trigger decrypt
@@ -97,7 +106,7 @@ const SecurePhoto: React.FC<SecurePhotoProps> = ({ path, storagePath, ivStr, enc
 
             handleDecrypt();
         }
-    }, [sharedKey, encryptedKey, path, storagePath, ivStr, isMine, privateKey, url]);
+    }, [sharedKey, encryptedKey, path, storagePath, ivStr, isMine, privateKey]);
 
     if (url) {
         return (

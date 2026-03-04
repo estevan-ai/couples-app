@@ -37,6 +37,7 @@ export interface User {
   sharedKeyBase64?: string; // Legacy: Encrypted Shared Key (if no partner) or raw (bad)
   encryptedSharedKey?: string; // New: Wrapped Shared Key (RSA-OAEP)
   sharingSettings?: SharingSettings;
+  spiceLimit?: string; // The maximum category the user wants visible initially 
   // AI Customization
   relationshipContext?: string; // e.g., "Long distance, new parents"
   workingOn?: string; // e.g., "Communication", "Intimacy", "Trust"
@@ -92,12 +93,41 @@ export interface ChatterNote {
 
 export interface JournalEntry {
   id: string;
+  thread_id?: string; // Links entry to a therapy session/thread
   timestamp: number;
   summary: string;
   rawInput: string;
-  category: 'reflection' | 'gratitude' | 'complication' | 'discovery';
+  category: 'reflection' | 'gratitude' | 'complication' | 'discovery' | 'general' | 'brain_dump' | 'event_log';
   aiPerspective: string;
 }
+
+export interface SessionAmendment {
+  timestamp: number;
+  text: string;
+}
+
+export interface SessionSummary {
+  thread_id: string;
+  partner_id: string; // The user this session belongs to
+  status: 'active' | 'cooling_down' | 'summarized';
+  last_activity: number;
+  cliff_note_body: string; // JSON or Text
+  amendments: SessionAmendment[];
+  emotional_markers: string[]; // e.g. "high-stress", "grief", "miscommunication"
+}
+
+export interface PrivateUserSummary {
+  id?: string;
+  thread_id: string;
+  user_id: string;
+  status: 'active' | 'cooling_down' | 'summarized';
+  last_activity: number;
+  detailed_summary: string; // The private timeline
+  categories: string[]; // e.g. 'reflection', 'brain_dump'
+  title?: string;
+}
+
+export type Tab = 'home' | 'directory' | 'flirts' | 'journal' | 'favors' | 'bank' | 'account' | 'giving' | 'chemistry' | 'session' | 'admin' | 'features';
 
 export type SortOption = 'default' | 'az' | 'za';
 
@@ -120,6 +150,8 @@ export interface Filters {
   showMyWork?: boolean;
   showMyUnsure?: boolean;
   showMyBoundaries?: boolean;
+
+  hideAboveSpiceLimit?: boolean; // Toggles whether items above the user's initial spice threshold are hidden from view.
 }
 
 export interface Bounty {
@@ -152,6 +184,7 @@ export interface SharingSettings {
   shareUnsure: boolean;
   shareBoundaries: boolean;
   shareFavors: boolean;
+  shareNotes?: boolean;
 }
 
 export interface NotificationSettings {

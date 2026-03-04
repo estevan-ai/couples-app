@@ -30,11 +30,82 @@ interface AccountProps {
     encryptionStatus?: 'locked' | 'unlocked' | 'initializing' | 'no-keys' | 'broken-identity';
     encryptionError?: string | null;
     onUpdateProfile?: (data: Partial<User>) => Promise<void>;
+    privateKey?: CryptoKey | null;
+    publicKey?: CryptoKey | null;
 }
+
+import { getKeyThumbprint, importPublicKey as importPubKeyUtil } from '../utils/encryption';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import { app } from '../firebase';
+
+const KeyDiagnostics = ({ privateKey, publicKey, serverPublicKeyB64 }: {
+    privateKey?: CryptoKey | null,
+    publicKey?: CryptoKey | null,
+    serverPublicKeyB64?: string | null
+}) => {
+    const [localThumb, setLocalThumb] = useState<string>('loading...');
+    const [serverThumb, setServerThumb] = useState<string>('loading...');
+
+    useEffect(() => {
+        const run = async () => {
+            if (privateKey) {
+                const t = await getKeyThumbprint(privateKey);
+                setLocalThumb(t);
+            } else {
+                setLocalThumb('missing');
+            }
+
+            if (serverPublicKeyB64) {
+                try {
+                    const pub = await importPubKeyUtil(serverPublicKeyB64);
+                    const t = await getKeyThumbprint(pub);
+                    setServerThumb(t);
+                } catch (e) {
+                    setServerThumb('error');
+                }
+            } else {
+                setServerThumb('not set');
+            }
+        };
+        run();
+    }, [privateKey, serverPublicKeyB64]);
+
+    const isMatch = localThumb !== 'loading...' && serverThumb !== 'loading...' && localThumb === serverThumb;
+
+    return (
+        <div className="bg-gray-50 rounded-3xl p-6 border border-gray-100 mb-8">
+            <h3 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
+                <span>🔍</span> System Identity Diagnostics
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase block mb-1">Local Device ID</span>
+                    <code className="text-xs font-mono font-bold text-blue-600">{localThumb}</code>
+                </div>
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-50">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase block mb-1">Server Profile ID</span>
+                    <code className="text-xs font-mono font-bold text-indigo-600">{serverThumb}</code>
+                </div>
+            </div>
+            <div className="mt-4">
+                {isMatch ? (
+                    <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-2 rounded-xl text-[10px] font-bold">
+                        <span>✅</span> Keys are in sync. Encryption should work!
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-2 rounded-xl text-[10px] font-bold">
+                        <span>⚠️</span> ID Mismatch! Decryption will fail. Use "Sync Code" to fix.
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 const Account: React.FC<AccountProps> = ({
     currentUser, partner, onReset, onLinkPartner, sharingSettings, setSharingSettings, onRedoQuiz, onResetHandlers, chatter, bounties, notificationSettings, setNotificationSettings, initialTab = 'profile',
-    onBackupIdentity, onRestoreIdentity, onGenerateSyncCode, onConsumeSyncCode, onResetEncryption, encryptionStatus, encryptionError, onUpdateProfile
+    onBackupIdentity, onRestoreIdentity, onGenerateSyncCode, onConsumeSyncCode, onResetEncryption, encryptionStatus, encryptionError, onUpdateProfile,
+    privateKey, publicKey
 }) => {
     const [activeTab, setActiveTab] = useState<'profile' | 'activity' | 'privacy'>(initialTab);
 
@@ -62,6 +133,28 @@ const Account: React.FC<AccountProps> = ({
         const newValue = !mockImageReveal;
         setMockImageReveal(newValue);
         localStorage.setItem('mockImageReveal', newValue.toString());
+    };
+
+    const [isPinging, setIsPinging] = useState(false);
+    const pingPartner = async () => {
+        if (!partner || isPinging) return;
+        setIsPinging(true);
+        try {
+            const functions = getFunctions(app);
+            const sendPing = httpsCallable(functions, 'sendSyncNotification');
+            const result = await sendPing({ targetUid: partner.uid });
+            const data = result.data as any;
+            if (data?.success) {
+                alert("Ping sent! Your partner will get a notification to sync. 🔔");
+            } else {
+                alert("Couldn't send ping: " + (data?.message || "Unknown error"));
+            }
+        } catch (error) {
+            console.error("Error pinging partner:", error);
+            alert("Failed to send ping. Are you offline?");
+        } finally {
+            setIsPinging(false);
+        }
     };
 
 
@@ -198,19 +291,39 @@ const Account: React.FC<AccountProps> = ({
                             )}
                         </div>
 
-                        {/* Emergency Encryption Reset */}
-                        {(currentUser.encryptedSharedKey && !currentUser.sharedKeyBase64) || encryptionStatus === 'broken-identity' ? (
-                            <div className="mt-2 mb-4">
-                                <button
-                                    onClick={() => {
-                                        if (confirm("⚠️ SYSTEM RESET: This will fix the 'OperationError' by creating a new identity. You will lose access to old encrypted messages unless you have a backup. Continue?")) {
-                                            onResetEncryption?.();
-                                        }
-                                    }}
-                                    className="w-full text-xs font-bold text-red-500 border border-red-200 bg-red-50 px-4 py-3 rounded-xl hover:bg-red-100 transition flex items-center justify-center gap-2"
-                                >
-                                    <span>🛠️</span> Fix "OperationError" / Reset Keys
-                                </button>
+                        {/* Improved Error Recovery UI */}
+                        {encryptionStatus === 'broken-identity' ? (
+                            <div className="mt-4 p-4 bg-red-50 rounded-2xl border border-red-100 space-y-3">
+                                <div className="flex gap-3">
+                                    <span className="text-xl">⚠️</span>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-red-800">Identity Mismatch</h4>
+                                        <p className="text-[10px] text-red-600 leading-tight">
+                                            This device is using a different secret key than the one on your server.
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setActiveTab('privacy');
+                                            setShowEnterCode(true);
+                                        }}
+                                        className="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-xs hover:bg-indigo-700 transition shadow-sm flex items-center justify-center gap-2"
+                                    >
+                                        <span>✨</span> SAFE FIX: Sync from phone
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (confirm("⚠️ DESTRUCTIVE RESET: This will fix the connection but permanently LOCK OUT all existing encrypted messages. Only use this if you have no other device to sync from. Continue?")) {
+                                                onResetEncryption?.();
+                                            }
+                                        }}
+                                        className="w-full py-2.5 bg-white text-red-600 font-bold border border-red-200 rounded-xl text-[10px] hover:bg-red-50 transition"
+                                    >
+                                        🛠️ System Reset (Lose old messages)
+                                    </button>
+                                </div>
                             </div>
                         ) : null}
 
@@ -230,7 +343,17 @@ const Account: React.FC<AccountProps> = ({
                                             <span className="text-xs text-blue-500">Sync Active</span>
                                         </div>
                                     </div>
-                                    <button onClick={() => { if (window.confirm("Disconnect partner? This will remove shared keys.")) onLinkPartner('', ''); }} className="text-xs text-blue-400 hover:text-blue-600 underline">Unlink</button>
+                                    <div className="flex flex-col gap-1 items-end">
+                                        <button onClick={() => { if (window.confirm("Disconnect partner? This will remove shared keys.")) onLinkPartner('', ''); }} className="text-xs text-blue-400 hover:text-blue-600 underline">Unlink</button>
+                                        <button
+                                            onClick={pingPartner}
+                                            disabled={isPinging}
+                                            className="text-xs font-bold text-indigo-500 hover:text-indigo-700 disabled:opacity-50 transition"
+                                            title="Send them a push notification to sync their app"
+                                        >
+                                            {isPinging ? 'Pinging...' : 'Ping to Sync 🔔'}
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -395,6 +518,11 @@ const Account: React.FC<AccountProps> = ({
                                 label="Share 'Not Interested' (👎)"
                                 active={sharingSettings.shareBoundaries}
                                 onToggle={() => setSharingSettings(prev => ({ ...prev, shareBoundaries: !prev.shareBoundaries }))}
+                            />
+                            <Toggle
+                                label="Share Notes & Thoughts (📓)"
+                                active={sharingSettings.shareNotes ?? true}
+                                onToggle={() => setSharingSettings(prev => ({ ...prev, shareNotes: !(prev.shareNotes ?? true) }))}
                             />
                         </div>
                     </div>
@@ -570,7 +698,15 @@ const Account: React.FC<AccountProps> = ({
             )}
 
             {/* Data & Privacy Transparency section - Bottom weighted reassurance */}
-            <div className="mt-12 bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+            <div className="mt-8">
+                <KeyDiagnostics
+                    privateKey={privateKey}
+                    publicKey={publicKey}
+                    serverPublicKeyB64={currentUser.publicKey}
+                />
+            </div>
+
+            <div className="mt-8 bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
                 <div className="p-8 border-b border-gray-50 bg-gray-50/50">
                     <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 flex items-center justify-between">
                         Data & Privacy Transparency
@@ -696,6 +832,61 @@ const Account: React.FC<AccountProps> = ({
                                 }
                             }}
                         />
+                    </div>
+                </div>
+            )}
+
+            {/* Magic Code (Export) Modal */}
+            {showSyncCode && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h2 className="text-xl font-serif font-bold text-gray-800">Magic Sync Code</h2>
+                            <button onClick={() => setShowSyncCode(false)} className="bg-white rounded-full p-2 text-gray-400">✕</button>
+                        </div>
+                        <div className="p-8 text-center space-y-6">
+                            <div className="text-5xl font-mono font-black tracking-widest text-blue-600 bg-blue-50 py-6 rounded-2xl border-2 border-dashed border-blue-200">
+                                {syncCode}
+                            </div>
+                            <p className="text-sm text-gray-500">
+                                Enter this code on your other device within 10 minutes to sync your identity safely.
+                            </p>
+                            <button onClick={() => setShowSyncCode(false)} className="w-full py-3 bg-gray-800 text-white font-bold rounded-xl">Got it</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Magic Code (Import) Modal */}
+            {showEnterCode && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                            <h2 className="text-xl font-serif font-bold text-gray-800">Enter Magic Code</h2>
+                            <button onClick={() => setShowEnterCode(false)} className="bg-white rounded-full p-2 text-gray-400">✕</button>
+                        </div>
+                        <div className="p-8 space-y-4">
+                            <input
+                                type="text"
+                                placeholder="6-digit code"
+                                maxLength={6}
+                                className="w-full text-center text-4xl font-mono font-bold py-4 bg-gray-50 rounded-2xl border-2 border-transparent focus:border-blue-400 outline-none"
+                                onChange={async (e) => {
+                                    if (e.target.value.length === 6) {
+                                        const success = await onConsumeSyncCode?.(e.target.value);
+                                        if (success) {
+                                            alert("Identity Restored! 🚀 Reloading...");
+                                            window.location.reload();
+                                        } else {
+                                            alert("Invalid or expired code. Try again.");
+                                        }
+                                    }
+                                }}
+                            />
+                            <p className="text-[10px] text-gray-400 text-center">
+                                Your identity will be securely downloaded from your other device.
+                            </p>
+                        </div>
                     </div>
                 </div>
             )}

@@ -1,194 +1,256 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ScienceGuide from './ScienceGuide';
 
 const Section: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
-    <div className={`bg-white rounded-xl shadow-lg p-6 sm:p-9 mb-10 ${className}`}>
+    <div className={`bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100 p-6 sm:p-9 mb-10 transition-all duration-300 hover:shadow-2xl ${className}`}>
         {children}
     </div>
 );
 
-const SubTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <h3 className="font-serif text-2xl mt-8 mb-4 border-b border-gray-200 pb-2 text-gray-700">{children}</h3>
+const SectionTitle: React.FC<{ children: React.ReactNode; author?: string; credentials?: string }> = ({ children, author, credentials }) => (
+    <div className="mb-8 border-b border-gray-200 pb-4">
+        <h2 className="font-serif text-3xl text-gray-800">{children}</h2>
+        {author && (
+            <div className="mt-2 flex items-center gap-2">
+                <span className="text-sm font-bold text-indigo-600 tracking-wide uppercase">{author}</span>
+                {credentials && <span className="text-xs text-gray-500 italic">| {credentials}</span>}
+            </div>
+        )}
+    </div>
 );
 
 const GivingReceivingGuide: React.FC = () => {
     return (
-        <div>
-            <header className="text-center mb-10">
-                <h1 className="text-4xl sm:text-5xl mb-3 text-gray-800">The Art of Expressing Wants and Needs</h1>
-                <p className="text-lg sm:text-xl text-gray-500 max-w-3xl mx-auto">A Conversation Guide for Couples</p>
+        <div className="max-w-4xl mx-auto pb-20">
+            <header className="text-center mb-12 relative animate-in slide-in-from-bottom-4 duration-700">
+                <div className="inline-block p-4 bg-indigo-50 rounded-full mb-4">
+                    <span className="text-4xl">🏛️</span>
+                </div>
+                <h1 className="text-4xl sm:text-5xl mb-4 font-serif font-bold text-gray-800 tracking-tight">The Architecture of Intimacy</h1>
+                <p className="text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto font-serif italic">
+                    Building connection through clarity, safety, and understanding.
+                </p>
             </header>
 
-            <Section>
-                <SubTitle>1. Why This Matters</SubTitle>
-                <p className="text-gray-600 leading-relaxed mb-4">Most couples talk about what they don’t want more easily than what they do want. Desire lives between safety and permission—and the moment partners can say,</p>
-                <blockquote className="font-serif text-lg text-center border-l-4 border-gray-300 text-gray-700 p-4 my-4 mx-auto max-w-2xl">
-                    <p>“Here’s what I want to do to you,”</p>
-                    <p>“Here’s what I want you to do to me,”</p>
-                </blockquote>
-                <p className="text-gray-600 leading-relaxed">they move from guessing to co-creating. This guide turns those statements into a structured practice—so intimacy becomes an intentional, playful, and emotionally fluent dialogue.</p>
-            </Section>
+            {/* Embedded Carousel Content */}
+            <div className="mb-16 -mx-4 sm:mx-0">
+                <ScienceGuide />
+            </div>
 
-            <Section>
-                <SubTitle>2. The Framework: The Four Modes of Consent</SubTitle>
-                <p className="text-gray-600 leading-relaxed mb-6">Adapted from Betty Martin’s Wheel of Consent (and refined here for HoneyDo Favors language):</p>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm sm:text-base">
-                        <thead>
-                            <tr className="bg-gray-50">
-                                <th className="text-left p-3 font-bold text-gray-800">Mode</th>
-                                <th className="text-left p-3 font-bold text-gray-800">Who’s Doing</th>
-                                <th className="text-left p-3 font-bold text-gray-800">Who It’s For</th>
-                                <th className="text-left p-3 font-bold text-gray-800">Essence</th>
-                                <th className="text-left p-3 font-bold text-gray-800">Example</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-gray-700">
-                            <tr className="border-b"><td className="p-3"><strong>Serving</strong></td><td className="p-3">Me</td><td className="p-3">You</td><td className="p-3">Giving</td><td className="p-3">“I’m doing this because you enjoy it.”</td></tr>
-                            <tr className="border-b"><td className="p-3"><strong>Accepting</strong></td><td className="p-3">You</td><td className="p-3">Me</td><td className="p-3">Receiving</td><td className="p-3">“You’re doing this because I enjoy it.”</td></tr>
-                            <tr className="border-b"><td className="p-3"><strong>Taking</strong></td><td className="p-3">Me</td><td className="p-3">Me</td><td className="p-3">Bold Receiving</td><td className="p-3">“I want to explore what feels good to me, with your consent.”</td></tr>
-                            <tr><td className="p-3"><strong>Allowing</strong></td><td className="p-3">You</td><td className="p-3">You</td><td className="p-3">Permission</td><td className="p-3">“I’m letting you explore, as long as I feel safe.”</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p className="text-gray-600 leading-relaxed mt-6">Every act of affection—sexual or otherwise—lives somewhere on this map. Naming the mode keeps both people clear on who’s giving, who’s receiving, and why.</p>
-            </Section>
-
-            <Section>
-                <SubTitle>3. Preparation Ritual</SubTitle>
-                <ul className="list-disc pl-6 space-y-2 text-gray-600">
-                    <li><strong>Environment:</strong> calm, private, distraction-free.</li>
-                    <li><strong>Timing:</strong> outside intimate moments—date night, coffee, or before bed.</li>
-                    <li><strong>Tools:</strong> two notecards or a shared HoneyDo sheet.</li>
-                </ul>
-                <h4 className="font-bold text-lg mt-6 mb-2 text-gray-800">Ground rules</h4>
-                <ol className="list-decimal pl-6 space-y-2 text-gray-600">
-                    <li>No interrupting or debating.</li>
-                    <li>You may say “pass” on any question.</li>
-                    <li>Curiosity &gt; performance.</li>
-                </ol>
-                <p className="text-gray-600 leading-relaxed mt-4">Each partner writes answers to:</p>
-                <ol className="list-decimal pl-6 space-y-2 text-gray-600 mt-2">
-                    <li>“What do I want you to do to me?”</li>
-                    <li>“What do I want to do to you?”</li>
-                </ol>
-                <p className="text-gray-600 leading-relaxed mt-4">Then trade one answer at a time and talk about what feeling or state it represents (safety, play, closeness, curiosity, release, etc.).</p>
-            </Section>
-
-            <Section>
-                <SubTitle>4. Translating Desire Into Feeling</SubTitle>
-                <p className="text-gray-600 leading-relaxed">After each statement, add:</p>
-                <blockquote className="font-serif text-lg text-center border-l-4 border-gray-300 text-gray-700 p-4 my-4 mx-auto max-w-2xl">“When that happens, I feel ____.”</blockquote>
-                <p className="text-gray-600 leading-relaxed"><strong>Example:</strong></p>
-                <p className="italic text-gray-700 mt-2">“I want you to guide my hands when we kiss; when that happens, I feel safe and desired.”</p>
-                <p className="text-gray-600 leading-relaxed mt-4">This step turns physical requests into emotional language—making it easier for partners who shut down or flood to stay connected.</p>
-            </Section>
-
-            <Section>
-                <SubTitle>5. The Four Quadrants of Connection</SubTitle>
-                <p className="text-gray-600 leading-relaxed mb-8">
-                    Explore your desires using these four modes. Think of them as different lenses to look through. Try discussing one or two prompts from each quadrant in a conversation.
+            <Section className="animate-in slide-in-from-bottom-8 duration-700 delay-100">
+                <SectionTitle
+                    author="Dr. Betty Martin"
+                    credentials="The Art of Receiving and Giving"
+                >
+                    1. The Four Quadrants of Connection
+                </SectionTitle>
+                <p className="text-gray-600 leading-relaxed mb-8 text-lg">
+                    In her groundbreaking book, <em>The Art of Receiving and Giving: The Wheel of Consent</em>, Dr. Betty Martin outlines a framework where desire lives between safety and permission. Often, we confuse <strong>who is doing the action</strong> with <strong>who the action is for</strong>. Breaking this down creates profound clarity and safety in intimacy.
                 </p>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-blue-50 rounded-xl p-6 border-t-4 border-blue-400 shadow-sm">
-                        <h4 className="font-serif text-2xl font-bold text-blue-700 mb-4 flex items-center gap-3">
-                            <span className="text-3xl">💎</span>
+                    <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 rounded-2xl p-6 border-t-4 border-blue-500 shadow-sm relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 opacity-10 text-6xl">💎</div>
+                        <h4 className="font-serif text-2xl font-bold text-blue-800 mb-2 flex items-center gap-2">
                             <span>Serving</span>
                         </h4>
-                        <p className="italic text-blue-900/70 mb-5">Giving for their pleasure. The joy is in their delight.</p>
-                        <ul className="space-y-3 text-gray-700">
-                            <li className="flex items-start gap-3"><span className="text-blue-500 font-bold mt-1">✓</span><span>I feel fulfilled when I can ___ for you.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-blue-500 font-bold mt-1">✓</span><span>I love watching you enjoy ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-blue-500 font-bold mt-1">✓</span><span>What act of care would make you exhale tonight?</span></li>
-                            <li className="flex items-start gap-3"><span className="text-blue-500 font-bold mt-1">✓</span><span>I’d like to learn how you prefer ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-blue-500 font-bold mt-1">✓</span><span>When you let me give freely, I feel ___.</span></li>
+                        <div className="inline-block bg-blue-200/50 text-blue-800 text-xs font-bold px-2 py-1 rounded mb-4">I DO • FOR YOU</div>
+                        <p className="text-blue-900/80 mb-5 leading-relaxed">Giving for their pleasure. The joy is in their delight and your ability to provide it.</p>
+                        <ul className="space-y-3 text-sm text-gray-700">
+                            <li className="flex items-start gap-2"><span className="text-blue-500 mt-0.5">✓</span><span>"I'd love to massage your shoulders tonight."</span></li>
+                            <li className="flex items-start gap-2"><span className="text-blue-500 mt-0.5">✓</span><span>"Tell me how you want this."</span></li>
                         </ul>
                     </div>
 
-                    <div className="bg-pink-50 rounded-xl p-6 border-t-4 border-pink-400 shadow-sm">
-                        <h4 className="font-serif text-2xl font-bold text-pink-700 mb-4 flex items-center gap-3">
-                            <span className="text-3xl">❤️</span>
+                    <div className="bg-gradient-to-br from-pink-50 to-pink-100/50 rounded-2xl p-6 border-t-4 border-pink-500 shadow-sm relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 opacity-10 text-6xl">❤️</div>
+                        <h4 className="font-serif text-2xl font-bold text-pink-800 mb-2 flex items-center gap-2">
                             <span>Accepting</span>
                         </h4>
-                        <p className="italic text-pink-900/70 mb-5">Receiving their gift. The joy is in being cherished.</p>
-                        <ul className="space-y-3 text-gray-700">
-                            <li className="flex items-start gap-3"><span className="text-pink-500 font-bold mt-1">✓</span><span>I love when you ___; it helps me feel ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-pink-500 font-bold mt-1">✓</span><span>I’d feel cherished if you took time to ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-pink-500 font-bold mt-1">✓</span><span>I want to relax while you ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-pink-500 font-bold mt-1">✓</span><span>When I let you take the lead, I feel ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-pink-500 font-bold mt-1">✓</span><span>Afterward, I appreciate when you ___.</span></li>
+                        <div className="inline-block bg-pink-200/50 text-pink-800 text-xs font-bold px-2 py-1 rounded mb-4">YOU DO • FOR ME</div>
+                        <p className="text-pink-900/80 mb-5 leading-relaxed">Receiving their gift. The joy is in being cherished and allowing yourself to be cared for.</p>
+                        <ul className="space-y-3 text-sm text-gray-700">
+                            <li className="flex items-start gap-2"><span className="text-pink-500 mt-0.5">✓</span><span>"I love when you play with my hair."</span></li>
+                            <li className="flex items-start gap-2"><span className="text-pink-500 mt-0.5">✓</span><span>"That feels amazing, don't stop."</span></li>
                         </ul>
                     </div>
 
-                    <div className="bg-orange-50 rounded-xl p-6 border-t-4 border-orange-400 shadow-sm">
-                        <h4 className="font-serif text-2xl font-bold text-orange-700 mb-4 flex items-center gap-3">
-                            <span className="text-3xl">🔥</span>
+                    <div className="bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-2xl p-6 border-t-4 border-orange-500 shadow-sm relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 opacity-10 text-6xl">🔥</div>
+                        <h4 className="font-serif text-2xl font-bold text-orange-800 mb-2 flex items-center gap-2">
                             <span>Taking</span>
                         </h4>
-                        <p className="italic text-orange-900/70 mb-5">Pursuing your pleasure. The joy is in your own desire.</p>
-                        <ul className="space-y-3 text-gray-700">
-                            <li className="flex items-start gap-3"><span className="text-orange-500 font-bold mt-1">✓</span><span>With your consent, I’d love to explore ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-orange-500 font-bold mt-1">✓</span><span>I get turned on by noticing ___ about you.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-orange-500 font-bold mt-1">✓</span><span>I’d feel alive if I could ___ while you watched.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-orange-500 font-bold mt-1">✓</span><span>I want to feel bold by ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-orange-500 font-bold mt-1">✓</span><span>When I take initiative, I hope you feel ___.</span></li>
+                        <div className="inline-block bg-orange-200/50 text-orange-800 text-xs font-bold px-2 py-1 rounded mb-4">I DO • FOR ME</div>
+                        <p className="text-orange-900/80 mb-5 leading-relaxed">Pursuing your pleasure with their consent. The joy is in your own desire and agency.</p>
+                        <ul className="space-y-3 text-sm text-gray-700">
+                            <li className="flex items-start gap-2"><span className="text-orange-500 mt-0.5">✓</span><span>"I'd really like to explore this with you."</span></li>
+                            <li className="flex items-start gap-2"><span className="text-orange-500 mt-0.5">✓</span><span>"I want to feel bold by trying __."</span></li>
                         </ul>
                     </div>
 
-                    <div className="bg-purple-50 rounded-xl p-6 border-t-4 border-purple-400 shadow-sm">
-                        <h4 className="font-serif text-2xl font-bold text-purple-700 mb-4 flex items-center gap-3">
-                            <span className="text-3xl">🌙</span>
+                    <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 rounded-2xl p-6 border-t-4 border-purple-500 shadow-sm relative overflow-hidden">
+                        <div className="absolute -right-4 -top-4 opacity-10 text-6xl">🌙</div>
+                        <h4 className="font-serif text-2xl font-bold text-purple-800 mb-2 flex items-center gap-2">
                             <span>Allowing</span>
                         </h4>
-                        <p className="italic text-purple-900/70 mb-5">Granting them freedom. The joy is in witnessing their exploration.</p>
-                        <ul className="space-y-3 text-gray-700">
-                            <li className="flex items-start gap-3"><span className="text-purple-500 font-bold mt-1">✓</span><span>I enjoy watching you explore ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-purple-500 font-bold mt-1">✓</span><span>You have permission to ___ as long as I say yes.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-purple-500 font-bold mt-1">✓</span><span>I like witnessing your pleasure when ___.</span></li>
-                            <li className="flex items-start gap-3"><span className="text-purple-500 font-bold mt-1">✓</span><span>What does freedom look like for you in this space?</span></li>
-                            <li className="flex items-start gap-3"><span className="text-purple-500 font-bold mt-1">✓</span><span>When I allow you, I feel ___.</span></li>
+                        <div className="inline-block bg-purple-200/50 text-purple-800 text-xs font-bold px-2 py-1 rounded mb-4">YOU DO • FOR YOU</div>
+                        <p className="text-purple-900/80 mb-5 leading-relaxed">Granting them freedom. The joy is in witnessing their exploration and pleasure.</p>
+                        <ul className="space-y-3 text-sm text-gray-700">
+                            <li className="flex items-start gap-2"><span className="text-purple-500 mt-0.5">✓</span><span>"You have permission to explore, I will let you know if I need to stop."</span></li>
+                            <li className="flex items-start gap-2"><span className="text-purple-500 mt-0.5">✓</span><span>"I enjoy watching you enjoy this."</span></li>
                         </ul>
                     </div>
                 </div>
             </Section>
 
-            <Section>
-                <SubTitle>6. Reflection & Aftercare</SubTitle>
-                <p className="text-gray-600 leading-relaxed mb-4">After each session:</p>
-                <ul className="list-disc pl-6 space-y-2 text-gray-600">
-                    <li>Share one thing that surprised you.</li>
-                    <li>One thing that felt especially safe.</li>
-                    <li>One thing you’d try differently next time.</li>
-                </ul>
-                <p className="text-gray-600 leading-relaxed my-4">Close by trading this sentence:</p>
-                <blockquote className="font-serif text-lg text-center border-l-4 border-gray-300 text-gray-700 p-4 my-4 mx-auto max-w-2xl">“Thank you for trusting me with that.”</blockquote>
-                <p className="text-gray-600 leading-relaxed">That phrase alone trains nervous systems to pair honesty with gratitude, not fear.</p>
-            </Section>
+            <Section className="animate-in slide-in-from-bottom-8 duration-700 delay-200">
+                <SectionTitle
+                    author="Emily Nagoski, Ph.D."
+                    credentials="Come As You Are"
+                >
+                    2. The Dual Control Model
+                </SectionTitle>
+                <p className="text-gray-600 leading-relaxed mb-8 text-lg">
+                    Human sexual response involves two separate mechanisms: the <strong>accelerator</strong> (noticing sex-related stimuli) and the <strong>brakes</strong> (noticing reasons not to be aroused). For many people, low desire isn't a broken accelerator—it's brakes that are pushed down too hard by stress, mental load, or exhaustion.
+                </p>
 
-            <Section>
-                <SubTitle>7. Troubleshooting Common Barriers</SubTitle>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm sm:text-base">
-                        <thead>
-                            <tr className="bg-gray-50">
-                                <th className="text-left p-3 font-bold text-gray-800">Challenge</th>
-                                <th className="text-left p-3 font-bold text-gray-800">Root Cause</th>
-                                <th className="text-left p-3 font-bold text-gray-800">Reframe</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-gray-700">
-                            <tr className="border-b"><td className="p-3">“I freeze when asked what I want.”</td><td className="p-3">Fear of rejection / conditioning</td><td className="p-3">Start with feelings, not acts. “I want to feel cared for.”</td></tr>
-                            <tr className="border-b"><td className="p-3">“It sounds selfish.”</td><td className="p-3">Guilt around receiving</td><td className="p-3">Receiving gives your partner a chance to succeed.</td></tr>
-                            <tr className="border-b"><td className="p-3">“We lose the mood when we talk.”</td><td className="p-3">Unpracticed verbalizing</td><td className="p-3">Treat talking as foreplay for the nervous system.</td></tr>
-                            <tr><td className="p-3">“I’m afraid they’ll think I’m weird.”</td><td className="p-3">Shame or secrecy</td><td className="p-3">Curiosity ≠ judgment. Curiosity builds trust.</td></tr>
-                        </tbody>
-                    </table>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 mb-8">
+                    <div className="flex flex-col items-center text-center p-6 bg-green-50 rounded-2xl border border-green-100">
+                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-2xl mb-4 shadow-sm">
+                            🟢
+                        </div>
+                        <h4 className="font-bold text-gray-800 mb-2 text-xl">The Accelerator</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Responds to sexually relevant information. Focus on adding "turn-ons" (intimacy, compliments, touch, visual cues).
+                        </p>
+                    </div>
+                    <div className="flex flex-col items-center text-center p-6 bg-red-50 rounded-2xl border border-red-100">
+                        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-2xl mb-4 shadow-sm">
+                            🛑
+                        </div>
+                        <h4 className="font-bold text-gray-800 mb-2 text-xl">The Brakes</h4>
+                        <p className="text-sm text-gray-600 leading-relaxed">
+                            Responds to threats or stress. To increase desire, focus first on removing "turn-offs" (stress, chores, unaddressed conflict).
+                        </p>
+                    </div>
+                </div>
+
+                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                    <h4 className="font-bold text-gray-800 mb-3 text-lg">Spontaneous vs. Responsive Desire</h4>
+                    <p className="text-gray-600 text-sm leading-relaxed mb-4">
+                        <strong>Spontaneous desire</strong> emerges out of the blue. You just feel it. <strong>Responsive desire</strong> emerges in response to pleasure. You start neutral, experience something pleasurable (touch, emotional connection), and <em>then</em> desire arises. Neither is better; responsive desire is highly common, especially in long-term relationships.
+                    </p>
                 </div>
             </Section>
 
-            <Section>
-                <SubTitle>8. Bringing It All Together</SubTitle>
-                <p className="text-gray-600 leading-relaxed mb-4">Intimacy isn’t a single act—it’s a language. Every time you ask, “Who is this for?” you bring your relationship closer to fluency in that language. The more fluent you become, the safer and more adventurous the space gets.</p>
-                <blockquote className="font-serif text-lg text-center border-l-4 border-gray-300 text-gray-700 p-4 my-4 mx-auto max-w-2xl">The gift of giving and receiving is not symmetry; it’s transparency. When each partner can say, “I know what we’re doing and why,” pleasure becomes mutual creation—not negotiation.</blockquote>
+            <Section className="animate-in slide-in-from-bottom-8 duration-700 delay-300">
+                <SectionTitle
+                    author="Dr. John Gottman"
+                    credentials="The Gottman Institute"
+                >
+                    3. Bids for Connection
+                </SectionTitle>
+                <div className="flex flex-col md:flex-row gap-8 items-center">
+                    <div className="flex-1">
+                        <p className="text-gray-600 leading-relaxed mb-6 text-lg">
+                            Intimacy is rarely built in the bedroom—it's built in the kitchen, the car, and passing in the hallway. A "bid" is any attempt from one partner to another for attention, affirmation, affection, or any other positive connection.
+                        </p>
+                        <blockquote className="border-l-4 border-indigo-400 pl-4 py-2 my-6 bg-indigo-50/50 rounded-r-lg">
+                            <p className="text-gray-700 font-serif italic text-lg leading-relaxed">
+                                "The defining difference between couples who stay together and those who don't is how they respond to these bids."
+                            </p>
+                        </blockquote>
+                        <p className="text-gray-600 text-sm leading-relaxed">
+                            When your partner sighs, points out a bird, or sends a meme, they are making a bid. You can <strong>turn toward</strong> (engage), <strong>turn away</strong> (ignore), or <strong>turn against</strong> (snap). Turning toward builds the "emotional bank account" that makes vulnerability and physical intimacy possible later.
+                        </p>
+                    </div>
+                    <div className="w-full md:w-1/3 bg-gray-50 rounded-2xl p-6 border border-gray-100 shadow-inner">
+                        <h4 className="font-bold text-gray-800 mb-4 text-center">Micro-Interactions</h4>
+                        <ul className="space-y-4">
+                            <li className="flex flex-col gap-1">
+                                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">The Bid</span>
+                                <span className="text-sm bg-white p-2 border border-gray-200 rounded-lg">"Look at this cute dog."</span>
+                            </li>
+                            <li className="flex flex-col gap-1">
+                                <span className="text-xs font-bold text-green-500 uppercase tracking-wide">Turning Toward</span>
+                                <span className="text-sm bg-green-50 p-2 border border-green-200 rounded-lg text-green-800">"Oh wow, so fluffy!"</span>
+                            </li>
+                            <li className="flex flex-col gap-1">
+                                <span className="text-xs font-bold text-red-500 uppercase tracking-wide">Turning Away</span>
+                                <span className="text-sm bg-red-50 p-2 border border-red-200 rounded-lg text-red-800">(Silence / keeps scrolling)</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </Section>
+
+            <Section className="animate-in slide-in-from-bottom-8 duration-700 delay-400">
+                <SectionTitle
+                    author="Esther Perel"
+                    credentials="Mating in Captivity"
+                >
+                    4. Erotic Intelligence
+                </SectionTitle>
+                <p className="text-gray-600 leading-relaxed mb-8 text-lg">
+                    Long-term relationships require reconciling two fundamental, yet conflicting human needs: our need for <strong>security and safety</strong>, and our need for <strong>mystery and adventure</strong>.
+                </p>
+                <div className="relative p-8 rounded-3xl bg-gradient-to-r from-slate-900 to-indigo-900 text-white shadow-2xl overflow-hidden">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl transform translate-x-1/2 -translate-y-1/2"></div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12 relative z-10">
+                        <div>
+                            <h4 className="font-serif text-2xl font-bold mb-3 text-indigo-300">The Comfort Zone</h4>
+                            <p className="text-slate-300 leading-relaxed text-sm mb-4">
+                                Love seeks familiarity, knowing everything about the other, shrinking the distance, and establishing domestic safety. This builds a rock-solid team.
+                            </p>
+                            <span className="inline-block border border-indigo-500/50 text-indigo-300 text-xs px-3 py-1 rounded-full bg-indigo-500/10">Predictability</span>
+                        </div>
+                        <div>
+                            <h4 className="font-serif text-2xl font-bold mb-3 text-pink-300">The Erotic Zone</h4>
+                            <p className="text-slate-300 leading-relaxed text-sm mb-4">
+                                Desire needs space. It seeks the unknown, novelty, risk, and playfulness. It requires stepping out of the roles of "co-managers of a household" into something separate.
+                            </p>
+                            <span className="inline-block border border-pink-500/50 text-pink-300 text-xs px-3 py-1 rounded-full bg-pink-500/10">Distance & Mystery</span>
+                        </div>
+                    </div>
+
+                    <div className="mt-10 p-5 bg-white/10 backdrop-blur-sm rounded-xl border border-white/20">
+                        <p className="text-center font-serif italic text-lg opacity-90">
+                            "Fire needs air. Desire needs space."
+                        </p>
+                        <p className="text-center text-sm mt-3 opacity-70">
+                            To cultivate desire, couples must intentionally step away from domestic routines to see each other in their full, radiant autonomy again.
+                        </p>
+                    </div>
+                </div>
+            </Section>
+
+            <Section className="animate-in slide-in-from-bottom-8 duration-700 delay-500 border-indigo-200 bg-indigo-50/30">
+                <SectionTitle>Discussion Prompts</SectionTitle>
+                <p className="text-gray-600 leading-relaxed mb-6">Take these frameworks and discuss them together. Pick one prompt for tonight:</p>
+                <div className="space-y-4">
+                    <div className="flex gap-4 items-start bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <div className="bg-indigo-100 text-indigo-600 w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold">1</div>
+                        <div>
+                            <h4 className="font-bold text-gray-800 mb-1">On the Wheel of Consent</h4>
+                            <p className="text-sm text-gray-600">Which of the four quadrants (Serving, Accepting, Taking, Allowing) do you feel most comfortable in? Which one feels most vulnerable to ask for or participate in?</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-4 items-start bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <div className="bg-indigo-100 text-indigo-600 w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold">2</div>
+                        <div>
+                            <h4 className="font-bold text-gray-800 mb-1">On the Brakes & Accelerator</h4>
+                            <p className="text-sm text-gray-600">What are the most common "brakes" (stressors, distractions) that prevent you from feeling present or aroused? How can we help take those brakes off for each other?</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-4 items-start bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+                        <div className="bg-indigo-100 text-indigo-600 w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-bold">3</div>
+                        <div>
+                            <h4 className="font-bold text-gray-800 mb-1">On Safety vs. Mystery</h4>
+                            <p className="text-sm text-gray-600">When was the last time you saw me "in my element" (confident, separate, doing something I'm good at) and felt a spark of attraction? How can we create more of that space?</p>
+                        </div>
+                    </div>
+                </div>
             </Section>
         </div>
     );

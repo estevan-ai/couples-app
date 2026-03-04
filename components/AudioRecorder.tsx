@@ -97,12 +97,18 @@ const AudioRecorder: React.FC<{ onStop: (blob: Blob) => void; minimal?: boolean 
             onTouchEnd={stop}
             onMouseLeave={stop}
             className={`rounded-full transition-all duration-200 shadow-sm flex items-center justify-center ${minimal
-                    ? 'p-2 w-9 h-9'
-                    : 'p-3'
+                ? 'p-2 w-9 h-9'
+                : 'p-3'
                 } ${recording ? 'bg-red-500 text-white animate-pulse scale-110' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
             title="Hold to Record"
         >
-            <span className={`${minimal ? 'text-sm' : 'text-xl'}`}>{recording ? '🎙️' : '🎤'}</span>
+            {recording ? (
+                <span className={`${minimal ? 'text-sm' : 'text-xl'}`}>🎙️</span>
+            ) : (
+                <svg className={`${minimal ? 'w-5 h-5' : 'w-7 h-7'} text-gray-500 hover:text-gray-700 transition`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+            )}
         </button>
     );
 };

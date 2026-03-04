@@ -197,7 +197,7 @@ export async function deriveKeyFromCode(code: string, salt: Uint8Array): Promise
     return await window.crypto.subtle.deriveKey(
         {
             name: "PBKDF2",
-            salt: salt,
+            salt: salt as any,
             iterations: 100000,
             hash: "SHA-256"
         },
@@ -206,4 +206,13 @@ export async function deriveKeyFromCode(code: string, salt: Uint8Array): Promise
         true,
         ["encrypt", "decrypt"]
     );
+}
+// --- 5. Diagnostics ---
+export async function getKeyThumbprint(key: CryptoKey): Promise<string> {
+    const exported = await window.crypto.subtle.exportKey(
+        key.type === "public" ? "spki" : "pkcs8",
+        key
+    );
+    const hash = await window.crypto.subtle.digest("SHA-256", exported);
+    return arrayBufferToBase64(hash).substring(0, 12);
 }

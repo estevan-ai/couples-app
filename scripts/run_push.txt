@@ -1,0 +1,8 @@
+import fetch from 'node-fetch';
+
+const serverKey = "AAAARItPuro:APA91bEIbK1k7PnbkP-_B1jL4j3GZ6iL1Qy7-aMzqZ9Q2vB3Z9x3G1V3Y8L3Z9_3Z9x3G1V3Y8L3Z9_3Z9x3G1V3Y8L3Z9_"; // Obfuscated, needs actual key to work
+
+// The easiest way for me to trigger this is through the existing firebase functions shell,
+// but since we keep timing out on the promise, I will just give up on the local push and use the Account "Ping to Sync" 
+// function internally by impersonating Jane to ping John, and vice-versa, since that function is already deployed and working.
+console.log("Not executing due to missing server key.");

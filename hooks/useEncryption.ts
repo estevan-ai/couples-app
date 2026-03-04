@@ -10,7 +10,8 @@ import {
     unwrapAESKey,
     arrayBufferToBase64,
     base64ToArrayBuffer,
-    importKeyOld
+    importKeyOld,
+    getKeyThumbprint
 } from '../utils/encryption';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
@@ -20,6 +21,7 @@ export interface EncryptionState {
     publicKey: CryptoKey | null;
     publicKeyBase64: string | null;
     sharedKey: CryptoKey | null;
+    legacySharedKey: CryptoKey | null; // For backwards compatibility
     status: 'locked' | 'unlocked' | 'initializing' | 'no-keys' | 'broken-identity';
 }
 
@@ -31,6 +33,7 @@ export const useEncryption = (userUid: string | undefined, userData?: any) => {
         publicKey: null,
         publicKeyBase64: null,
         sharedKey: null,
+        legacySharedKey: null,
         status: 'initializing'
     });
 
@@ -54,8 +57,9 @@ export const useEncryption = (userUid: string | undefined, userData?: any) => {
             let privateKey: CryptoKey | null = null;
 
             if (storedPem) {
-                console.warn(`[useEncryption] Loaded Private Key starting with: ${storedPem.substring(0, 20)}...`);
                 privateKey = await importPrivateKey(storedPem);
+                const thumb = await getKeyThumbprint(privateKey);
+                console.warn(`[useEncryption] Loaded Private Identity. Thumbprint: ${thumb}`);
             }
 
             // B. Check userData or Fetch from Firestore
@@ -79,21 +83,40 @@ export const useEncryption = (userUid: string | undefined, userData?: any) => {
 
                 // 2. Try to Unlock (Modern vs Legacy)
                 if (data.encryptedSharedKey && privateKey) {
+                    const serverThumb = data.publicKey ? await getKeyThumbprint(await importPublicKey(data.publicKey)) : 'none';
+                    const localThumb = await getKeyThumbprint(privateKey);
+
+                    console.log(`[useEncryption] Auth Check: Server=${serverThumb}, Local=${localThumb}`);
+
                     // MODERN: Unwrap with Identity
                     try {
                         const sharedKey = await unwrapAESKey(data.encryptedSharedKey, privateKey);
-                        setState(prev => ({ ...prev, status: 'unlocked', sharedKey, privateKey, publicKey, publicKeyBase64: data.publicKey }));
+                        let legacySharedKey: CryptoKey | null = null;
+
+                        // Fallback: Also load the legacy key if it exists, for old messages
+                        if (data.sharedKeyBase64) {
+                            try {
+                                legacySharedKey = await importKeyOld(data.sharedKeyBase64);
+                            } catch (e) {
+                                console.warn("Could not load legacy shared key fallback:", e);
+                            }
+                        }
+
+                        setState(prev => ({ ...prev, status: 'unlocked', sharedKey, legacySharedKey, privateKey, publicKey, publicKeyBase64: data.publicKey }));
                         setLastError(null);
                     } catch (e) {
                         console.error("Failed to unlock shared key:", e);
-                        setLastError("Identity Mismatch: Keys on this device don't match your partner link.");
+                        const msg = (serverThumb !== localThumb)
+                            ? `Identity Mismatch: This device (ID: ${localThumb}) doesn't match the server profile (ID: ${serverThumb}).`
+                            : "Decryption Failed: Shared key is corrupted or encrypted with a different key.";
+                        setLastError(msg);
                         setState(prev => ({ ...prev, status: 'broken-identity' }));
                     }
                 } else if (!data.encryptedSharedKey && data.sharedKeyBase64) {
                     // LEGACY: Import old key & Migrate
                     try {
                         const sharedKey = await importKeyOld(data.sharedKeyBase64);
-                        setState(prev => ({ ...prev, sharedKey, status: 'unlocked' }));
+                        setState(prev => ({ ...prev, sharedKey, legacySharedKey: sharedKey, status: 'unlocked' }));
 
                         // Auto-Migrate if we have Identity
                         if (publicKey && privateKey) {
@@ -140,6 +163,7 @@ export const useEncryption = (userUid: string | undefined, userData?: any) => {
             publicKey: keyPair.publicKey,
             publicKeyBase64: pubBase64,
             sharedKey: null,
+            legacySharedKey: null,
             status: 'locked'
         });
 
@@ -170,18 +194,52 @@ export const useEncryption = (userUid: string | undefined, userData?: any) => {
     };
 
     // 5. Restore Identity (Import)
-    const restoreIdentity = async (pem: string): Promise<boolean> => {
+    const restoreIdentity = async (pemOrJson: string): Promise<boolean> => {
         try {
-            const privateKey = await importPrivateKey(pem);
+            let privPem: string;
+            let sharedB64: string | null = null;
+            let pubPem: string | null = null;
+
+            try {
+                // Try parsing as JSON (New format)
+                const parsed = JSON.parse(pemOrJson);
+                privPem = parsed.privPem;
+                sharedB64 = parsed.sharedB64;
+                pubPem = parsed.pubPem;
+                console.log("[useEncryption] Restoring from Full Recovery payload...");
+            } catch (e) {
+                // Fallback to raw PEM (Legacy format)
+                privPem = pemOrJson;
+                console.log("[useEncryption] Restoring from Legacy PEM format.");
+            }
+
+            const privateKey = await importPrivateKey(privPem);
             // Save to local storage
-            const base64 = await exportPrivateKey(privateKey);
-            localStorage.setItem(`${STORAGE_KEY_PRIVATE}_${userUid}`, base64);
+            localStorage.setItem(`${STORAGE_KEY_PRIVATE}_${userUid}`, privPem);
 
-            // Reload state
-            setState(prev => ({ ...prev, privateKey, status: 'locked' }));
+            // Update Local State
+            const updateState: any = { privateKey, status: 'locked' };
 
-            // Attempt to re-sync with Firestore public key loop will happen on next mount or we force it?
-            // Ideally we just reload the page or re-run loadIdentity
+            if (sharedB64) {
+                const { importKeyOld } = await import('../utils/encryption');
+                const sharedKey = await importKeyOld(sharedB64);
+                updateState.sharedKey = sharedKey;
+                updateState.status = 'unlocked';
+            }
+
+            if (pubPem) {
+                const { importPublicKey } = await import('../utils/encryption');
+                updateState.publicKeyBase64 = pubPem;
+                try {
+                    updateState.publicKey = await importPublicKey(pubPem);
+                } catch (e) {
+                    console.error("Failed to import public key during restore", e);
+                }
+            }
+
+            setState(prev => ({ ...prev, ...updateState }));
+
+            // Reload identity to ensure full sync with Firestore
             await loadIdentity();
             return true;
         } catch (e) {
@@ -201,25 +259,28 @@ export const useEncryption = (userUid: string | undefined, userData?: any) => {
         const salt = window.crypto.getRandomValues(new Uint8Array(16));
         const key = await import('../utils/encryption').then(m => m.deriveKeyFromCode(code, salt));
 
-        // 3. Encrypt Private Key
+        // 3. Prepare Payload (Private Key + Public Key + Shared Key if exists)
         const privPem = await exportPrivateKey(state.privateKey);
+        const pubPem = state.publicKeyBase64; // Already a PEM-like string
+        const sharedB64 = state.sharedKey ? await import('../utils/encryption').then(m => m.exportKeyOld(state.sharedKey!)) : null;
+
+        const syncPayload = JSON.stringify({
+            privPem,
+            pubPem,
+            sharedB64,
+            timestamp: Date.now()
+        });
+
+        // 4. Encrypt Payload
         const enc = new TextEncoder();
         const iv = window.crypto.getRandomValues(new Uint8Array(12));
         const encryptedBuffer = await window.crypto.subtle.encrypt(
             { name: "AES-GCM", iv: iv },
             key,
-            enc.encode(privPem)
+            enc.encode(syncPayload)
         );
 
-        // 4. Upload to Firestore (TTL handled by logic or not)
-        const payload = {
-            salt: import('../utils/encryption').then(m => m.arrayBufferToBase64(salt.buffer)),
-            iv: import('../utils/encryption').then(m => m.arrayBufferToBase64(iv.buffer)),
-            data: import('../utils/encryption').then(m => m.arrayBufferToBase64(encryptedBuffer)),
-            timestamp: Date.now()
-        };
-
-        // Resolve promises (lazy implementation above corrected below)
+        // 5. Upload to Firestore
         const [saltB64, ivB64, dataB64] = await Promise.all([
             import('../utils/encryption').then(m => m.arrayBufferToBase64(salt.buffer)),
             import('../utils/encryption').then(m => m.arrayBufferToBase64(iv.buffer)),
@@ -263,9 +324,58 @@ export const useEncryption = (userUid: string | undefined, userData?: any) => {
                 );
 
                 const dec = new TextDecoder();
-                const privPem = dec.decode(decryptedBuffer);
+                const decryptedText = dec.decode(decryptedBuffer);
 
-                return await restoreIdentity(privPem);
+                let privPem: string;
+                let pubPem: string | null = null;
+                let sharedB64: string | null = null;
+
+                try {
+                    // Try parsing as JSON (New format)
+                    const parsed = JSON.parse(decryptedText);
+                    privPem = parsed.privPem;
+                    pubPem = parsed.pubPem;
+                    sharedB64 = parsed.sharedB64;
+                } catch (e) {
+                    // Fallback to raw PEM (Legacy format)
+                    privPem = decryptedText;
+                }
+
+                // Restore Identity Locally
+                const success = await restoreIdentity(privPem);
+                if (!success) return false;
+
+                // REPAIR SERVER STATE
+                // This makes this device 'Authoritative'
+                const updateData: any = {};
+
+                // 1. Restore Server Public Key if we have it
+                if (pubPem) {
+                    updateData.publicKey = pubPem;
+                }
+
+                // 2. Restore Server Encrypted Shared Key if we have local sharedKey
+                if (sharedB64) {
+                    const { importKeyOld, importPublicKey, wrapAESKey } = await import('../utils/encryption');
+                    const sharedKey = await importKeyOld(sharedB64);
+                    // Wrap with THE restored public key (to be safe)
+                    const rawPub = await importPublicKey(pubPem || snap.data().publicKey);
+                    const wrapped = await wrapAESKey(sharedKey, rawPub);
+                    updateData.encryptedSharedKey = wrapped;
+
+                    // Also update local state to be 'unlocked' immediately
+                    setState(prev => ({ ...prev, sharedKey, status: 'unlocked' }));
+                }
+
+                if (Object.keys(updateData).length > 0) {
+                    console.warn("[useEncryption] Repairing server state with restored keys...");
+                    await updateDoc(userRef, updateData);
+                }
+
+                // Cleanup Sync Payload
+                await updateDoc(userRef, { tempSyncPayload: null });
+
+                return true;
             } catch (e) {
                 console.error("Wrong code or decryption failed", e);
                 return false;

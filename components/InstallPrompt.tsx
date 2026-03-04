@@ -59,7 +59,7 @@ const InstallPrompt: React.FC<{ isOpen: boolean, onClose: () => void }> = ({ isO
     }
 
     return (
-        <div className="fixed top-0 left-0 right-0 z-[2000] p-4 animate-in slide-in-from-top duration-500">
+        <div className="fixed bottom-24 left-0 right-0 z-[2000] p-4 animate-in slide-in-from-bottom duration-500">
             <div className="bg-white/90 backdrop-blur-md rounded-2xl shadow-xl border border-indigo-100 p-4 flex items-center justify-between gap-4 max-w-lg mx-auto">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-md flex items-center justify-center text-xl text-white">

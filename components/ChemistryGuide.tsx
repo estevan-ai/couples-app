@@ -30,9 +30,10 @@ interface ChemistryGuideProps {
     partnerBookmarks: Record<number, Bookmark>;
     highlights: Highlight[];
     onPinInsight: (text: string, source: string, context?: string) => Promise<void>;
+    onNavigateToTerm: (termName: string) => void;
 }
 
-const ChemistryGuide: React.FC<ChemistryGuideProps> = ({ currentUser, partner, bookmarks, partnerBookmarks, highlights, onPinInsight }) => {
+const ChemistryGuide: React.FC<ChemistryGuideProps> = ({ currentUser, partner, bookmarks, partnerBookmarks, highlights, onPinInsight, onNavigateToTerm }) => {
     const [isAIActive, setIsAIActive] = useState(false);
     const [aiPrompt, setAiPrompt] = useState('');
 
@@ -129,7 +130,7 @@ const ChemistryGuide: React.FC<ChemistryGuideProps> = ({ currentUser, partner, b
                             <p className="text-xs text-pink-600 mb-4 opacity-80">High-octane connection points.</p>
                             <div className="flex flex-wrap gap-2">
                                 {alignment.sharedLoves.length > 0 ? (
-                                    alignment.sharedLoves.map((t, i) => <span key={i} className="bg-white text-pink-600 px-2 py-1 rounded-md text-xs font-bold border border-pink-100">{t}</span>)
+                                    alignment.sharedLoves.map((t, i) => <button onClick={() => onNavigateToTerm(t)} key={i} className="bg-white text-pink-600 px-2 py-1 rounded-md text-xs font-bold border border-pink-100 hover:bg-pink-100 transition cursor-pointer shadow-sm text-left">{t}</button>)
                                 ) : <span className="text-xs text-gray-400 italic">No exact matches yet. Keep exploring!</span>}
                             </div>
                         </div>
@@ -138,7 +139,7 @@ const ChemistryGuide: React.FC<ChemistryGuideProps> = ({ currentUser, partner, b
                             <p className="text-xs text-blue-600 mb-4 opacity-80">Where one leads and the other follows.</p>
                             <div className="flex flex-wrap gap-2">
                                 {alignment.complementary.length > 0 ? (
-                                    alignment.complementary.map((t, i) => <span key={i} className="bg-white text-blue-600 px-2 py-1 rounded-md text-xs font-bold border border-blue-100">{t}</span>)
+                                    alignment.complementary.map((t, i) => <button onClick={() => onNavigateToTerm(t)} key={i} className="bg-white text-blue-600 px-2 py-1 rounded-md text-xs font-bold border border-blue-100 hover:bg-blue-100 transition cursor-pointer shadow-sm text-left">{t}</button>)
                                 ) : <span className="text-xs text-gray-400 italic">No complementary matches found.</span>}
                             </div>
                         </div>
@@ -147,7 +148,7 @@ const ChemistryGuide: React.FC<ChemistryGuideProps> = ({ currentUser, partner, b
                             <p className="text-xs text-purple-600 mb-4 opacity-80">Opportunities for new discovery.</p>
                             <div className="flex flex-wrap gap-2">
                                 {alignment.growth.length > 0 ? (
-                                    alignment.growth.map((t, i) => <span key={i} className="bg-white text-purple-600 px-2 py-1 rounded-md text-xs font-bold border border-purple-100">{t}</span>)
+                                    alignment.growth.map((t, i) => <button onClick={() => onNavigateToTerm(t)} key={i} className="bg-white text-purple-600 px-2 py-1 rounded-md text-xs font-bold border border-purple-100 hover:bg-purple-100 transition cursor-pointer shadow-sm text-left">{t}</button>)
                                 ) : <span className="text-xs text-gray-400 italic">No mismatch growth areas currently.</span>}
                             </div>
                         </div>
